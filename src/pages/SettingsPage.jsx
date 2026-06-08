@@ -18,6 +18,7 @@ const defaultMapping = {
 export default function SettingsPage({ status, syncNow, data }) {
   const [period, setPeriod] = useState(status.settings?.defaultPeriod || '90d');
   const [useDemoComplements, setUseDemoComplements] = useState(Boolean(status.settings?.useDemoComplements));
+  const [strategyProjectId, setStrategyProjectId] = useState(status.settings?.strategyProjectId || data.meta.strategyProjectId || '38');
   const [mapping, setMapping] = useState({ ...defaultMapping, ...(status.settings?.financeMapping || {}) });
   const [check, setCheck] = useState(null);
 
@@ -30,7 +31,7 @@ export default function SettingsPage({ status, syncNow, data }) {
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, financeMapping: mapping })
+      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, strategyProjectId, financeMapping: mapping })
     });
     await syncNow();
   }
@@ -51,12 +52,12 @@ export default function SettingsPage({ status, syncNow, data }) {
               Реальные данные остаются основой. Если включить режим, система добавит недостающие часы, ряды графиков и финансовые значения только для демонстрации возможностей дашбордов.
             </p>
           </div>
-          <button className={`btn ${useDemoComplements ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200' : 'btn-primary'}`} onClick={toggleDemoComplements}>
+          <button className={`btn ${useDemoComplements ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100 dark:hover:bg-amber-900/60' : 'btn-primary'}`} onClick={toggleDemoComplements}>
             {useDemoComplements ? 'Отключить демонстрационные данные' : 'Добавить демонстрационные данные'}
           </button>
         </div>
         {data.meta.demoComplements && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
             Сейчас включены демонстрационные дополнения. Такие значения используются только для показа интерфейса и не являются данными Bitrix24.
           </div>
         )}
@@ -72,15 +73,17 @@ export default function SettingsPage({ status, syncNow, data }) {
               <p>Последняя синхронизация: {status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString('ru-RU') : 'нет'}</p>
               <p>Смарт-процесс финансов: {data.meta.financeSmartProcess?.entityTypeId || mapping.smartProcessEntityTypeId || 'не найден'}</p>
               <p>Финансовых строк: {data.meta.financeSmartProcess?.records ?? 0}</p>
+              <p>Связанные задачи: {data.meta.taskRelations?.available ? `${data.meta.taskRelations.count} связей получено` : 'нужен BITRIX_WEBHOOK_URL'}</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <button className="btn" onClick={checkAccess}>Проверить API-доступ</button>
               <button className="btn btn-primary" onClick={syncNow}>Запустить синхронизацию</button>
             </div>
-            {check && <div className={`mt-3 rounded-lg p-3 text-sm ${check.ok ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>{check.ok ? 'API-доступ подтвержден' : check.message}</div>}
+            {check && <div className={`mt-3 rounded-lg p-3 text-sm ${check.ok ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' : 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200'}`}>{check.ok ? 'API-доступ подтвержден' : check.message}</div>}
           </div>
           <div>
             <h2 className="mb-4 text-lg font-bold">Маппинг финансов</h2>
+            <SettingsInput label="ID проекта стратегии" value={strategyProjectId} onChange={setStrategyProjectId} />
             <label className="mb-3 grid gap-1 text-sm text-slate-500">
               Период по умолчанию
               <Dropdown value={period} onChange={setPeriod} options={[['30d', '30 дней'], ['90d', '90 дней'], ['year', 'Год']]} placeholder="Выберите период" className="w-fit" searchable={false} />

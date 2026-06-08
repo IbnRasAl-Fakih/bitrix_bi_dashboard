@@ -6,6 +6,7 @@ import DetailDrawer from './components/DetailDrawer.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Occupancy from './pages/Occupancy.jsx';
 import TimePage from './pages/TimePage.jsx';
+import StrategyPage from './pages/StrategyPage.jsx';
 import ProjectsPage from './pages/ProjectsPage.jsx';
 import FinancePage from './pages/FinancePage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="/" element={<Dashboard data={filtered} setDetail={setDetail} />} />
             <Route path="/occupancy" element={<Occupancy data={filtered} filters={filters} setFilters={setFilters} />} />
             <Route path="/time" element={<TimePage data={filtered} />} />
+            <Route path="/strategy" element={<StrategyPage data={data} setDetail={setDetail} />} />
             <Route path="/projects" element={<ProjectsPage data={filtered} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
@@ -113,7 +115,7 @@ export default function App() {
           </Routes>
         )}
       </main>
-      {detail && <DetailDrawer detail={detail} data={filtered} onClose={() => setDetail(null)} />}
+      {detail && <DetailDrawer detail={detail} data={detail.scope === 'strategy' ? data : filtered} onClose={() => setDetail(null)} />}
     </div>
   );
 }

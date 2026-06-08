@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Settings,
   Sun,
+  Target,
   Users,
   WalletCards
 } from '../icons/index.jsx';
@@ -28,6 +29,7 @@ const nav = [
   ['/finance', 'Финансы', WalletCards],
   ['/tasks', 'Задачи', CheckCircle2],
   ['/employees', 'Сотрудники', Users],
+  ['/strategy', 'Стратегия', Target],
   ['/settings', 'Настройки', Settings],
   ['/sync', 'Синхронизация', Database]
 ];

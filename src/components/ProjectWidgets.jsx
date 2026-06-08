@@ -36,26 +36,37 @@ export function ProjectCard({ project, selected = false, onClick }) {
   );
 }
 
-export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, onClearSelected }) {
+export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, onClearSelected, hierarchyMode = false }) {
   const [scale, setScale] = useState('month');
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState('start');
   const [showDetails, setShowDetails] = useState(true);
   const [offsetMonths, setOffsetMonths] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
+  const [selectedHierarchyId, setSelectedHierarchyId] = useState('');
   const panRef = useRef(null);
   const isTaskMode = Boolean(selectedProject);
+  const selectedHierarchy = tasks.find((task) => task.id === selectedHierarchyId);
+  const isHierarchyRoot = hierarchyMode && !selectedHierarchyId;
 
   useEffect(() => {
     setStatus('');
     setOffsetMonths(0);
+    setSelectedHierarchyId('');
   }, [selectedProject?.id]);
 
   const rows = useMemo(() => {
+    const projectTasks = isTaskMode ? tasks.filter((task) => task.projectId === selectedProject.id) : [];
+    const taskRows = hierarchyMode
+      ? projectTasks
+        .filter((task) => selectedHierarchyId ? task.parentId === selectedHierarchyId : !task.parentId || task.parentId === '0')
+        .map((task, index) => ({
+          ...normalizeTaskDates(task, index),
+          childCount: projectTasks.filter((child) => child.parentId === task.id).length
+        }))
+      : projectTasks.map((task, index) => normalizeTaskDates(task, index));
     const sourceRows = isTaskMode
-      ? tasks
-        .filter((task) => task.projectId === selectedProject.id)
-        .map((task, index) => normalizeTaskDates(task, index))
+      ? taskRows
       : projects.map((project, index) => {
         const projectTasks = tasks.filter((task) => task.projectId === project.id);
         const normalizedTasks = projectTasks.map((task, taskIndex) => normalizeTaskDates(task, taskIndex));
@@ -74,7 +85,7 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
         if (sort === 'status') return String(a.status).localeCompare(String(b.status), 'ru');
         return a.start - b.start;
       });
-  }, [isTaskMode, projects, selectedProject, status, sort, tasks]);
+  }, [hierarchyMode, isTaskMode, projects, selectedHierarchyId, selectedProject, status, sort, tasks]);
 
   const stepMonths = getStepMonths(scale);
   const range = useMemo(() => buildRange(rows, scale, offsetMonths), [rows, scale, offsetMonths]);
@@ -84,6 +95,20 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
   const overdueTasks = isTaskMode
     ? rows.filter((row) => row.overdue).length
     : rows.reduce((acc, row) => acc + (row.overdueTasks || 0), 0);
+  const ganttTitle = hierarchyMode
+    ? selectedHierarchy
+      ? `Задачи направления: ${selectedHierarchy.title}`
+      : 'Стратегические направления'
+    : isTaskMode
+      ? `Задачи проекта: ${selectedProject.name}`
+      : 'Диаграмма Ганта';
+  const ganttDescription = hierarchyMode
+    ? selectedHierarchy
+      ? 'Плановые сроки задач выбранного стратегического направления.'
+      : 'Сроки реализации направлений стратегии. Выберите направление, чтобы открыть его задачи.'
+    : isTaskMode
+      ? 'На таймлайне показаны задачи выбранного проекта.'
+      : 'Сроки проектов, прогресс по времени и риск. Нажмите на проект в диаграмме, чтобы увидеть его задачи.';
 
   function startTimelinePan(event) {
     event.preventDefault();
@@ -115,13 +140,14 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
   function resetGanttView() {
     setStatus('');
     setOffsetMonths(0);
-    if (isTaskMode) onClearSelected?.();
+    if (selectedHierarchyId) setSelectedHierarchyId('');
+    else if (isTaskMode) onClearSelected?.();
   }
 
   if (!rows.length) {
     return (
       <section className="panel mb-4 p-4">
-        <h2 className="text-base font-bold">{isTaskMode ? `Задачи проекта: ${selectedProject.name}` : 'Диаграмма Ганта'}</h2>
+        <h2 className="text-base font-bold">{ganttTitle}</h2>
         <p className="mt-1 text-sm text-slate-500">
           {isTaskMode ? 'По выбранному проекту нет задач с доступными датами.' : 'Нет проектов с датами для отображения.'}
         </p>
@@ -140,18 +166,14 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
       <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-bold">{isTaskMode ? `Задачи проекта: ${selectedProject.name}` : 'Диаграмма Ганта'}</h2>
-            {isTaskMode && (
-              <button className="btn h-8 px-2 text-xs" onClick={onClearSelected}>
-                Все проекты
+            <h2 className="text-base font-bold">{ganttTitle}</h2>
+            {isTaskMode && (!hierarchyMode || selectedHierarchyId) && (
+              <button className="btn h-8 px-2 text-xs" onClick={resetGanttView}>
+                {selectedHierarchyId ? 'Все направления' : 'Все проекты'}
               </button>
             )}
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            {isTaskMode
-              ? 'На таймлайне показаны задачи выбранного проекта.'
-              : 'Сроки проектов, прогресс по времени и риск. Нажмите на проект в диаграмме, чтобы увидеть его задачи.'}
-          </p>
+          <p className="mt-1 text-sm text-slate-500">{ganttDescription}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Dropdown
@@ -187,17 +209,17 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
       </div>
 
       <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-        <GanttStat label={isTaskMode ? 'Задач на диаграмме' : 'Проектов'} value={rows.length} />
+        <GanttStat label={hierarchyMode ? isHierarchyRoot ? 'Направлений' : 'Задач направления' : isTaskMode ? 'Задач на диаграмме' : 'Проектов'} value={rows.length} />
         <GanttStat label="Видимый период" value={`${formatDate(range.start)} - ${formatDate(range.end)}`} />
         <GanttStat label={isTaskMode ? 'Закрыто задач' : 'Всего задач'} value={isTaskMode ? rows.filter((row) => row.status === 'closed').length : totalTasks} />
         <GanttStat label="Просрочено задач" value={overdueTasks} />
       </div>
 
-      <div className="overflow-auto">
-        <div className="grid min-w-[1180px] grid-cols-[280px_minmax(900px,1fr)]">
-          <div>
+      <div className="min-w-0 overflow-hidden">
+        <div className="grid min-w-0 grid-cols-[minmax(220px,22%)_minmax(0,1fr)]">
+          <div className="min-w-0">
             <div className="h-8 border-b border-slate-200 pb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800">
-              {isTaskMode ? 'Задача' : 'Проект'}
+              {hierarchyMode && isHierarchyRoot ? 'Направление' : isTaskMode ? 'Задача' : 'Проект'}
             </div>
             {rows.map((row) => {
               const progress = isTaskMode ? taskProgress(row) : timeProgress(row.start, row.end);
@@ -226,7 +248,11 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
               return (
                 <div className="h-[84px] border-b border-slate-100 dark:border-slate-800" key={row.id}>
                   {isTaskMode ? (
-                    <div className="h-full py-3 pr-4">{content}</div>
+                    hierarchyMode && isHierarchyRoot ? (
+                      <button className="block h-full w-full py-3 pr-4 text-left text-inherit outline-none" type="button" onClick={() => setSelectedHierarchyId(row.sourceId)}>
+                        {content}
+                      </button>
+                    ) : <div className="h-full py-3 pr-4">{content}</div>
                   ) : (
                     <button className="block h-full w-full py-3 pr-4 text-left text-inherit outline-none" type="button" onClick={() => onSelectProject?.(row)}>
                       {content}
@@ -247,9 +273,9 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
             onPointerLeave={stopTimelinePan}
           >
             {showToday && <TodayLine position={todayPosition} />}
-            <div className="grid h-8 border-b border-slate-200 pb-2 dark:border-slate-800" style={{ gridTemplateColumns: `repeat(${range.ticks.length}, minmax(120px, 1fr))` }}>
+            <div className="grid h-8 border-b border-slate-200 pb-2 dark:border-slate-800" style={{ gridTemplateColumns: `repeat(${range.ticks.length}, minmax(0, 1fr))` }}>
               {range.ticks.map((tick) => (
-                <div className="border-l border-slate-200 pl-2 text-xs font-semibold text-slate-500 dark:border-slate-800" key={tick.key}>
+                <div className="min-w-0 truncate border-l border-slate-200 pl-2 text-xs font-semibold text-slate-500 dark:border-slate-800" key={tick.key}>
                   {tick.label}
                 </div>
               ))}
@@ -278,6 +304,11 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
                       title={`${row.name}: ${formatDate(row.start)} - ${formatDate(row.end)}`}
                       type="button"
                       onClick={(event) => {
+                        if (hierarchyMode && isHierarchyRoot) {
+                          event.stopPropagation();
+                          setSelectedHierarchyId(row.sourceId);
+                          return;
+                        }
                         if (isTaskMode) return;
                         event.stopPropagation();
                         onSelectProject?.(row);
@@ -299,10 +330,11 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
+      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-500">
         {isTaskMode ? (
           <>
-            <LegendItem color="bg-brand-500" label="открытая / в работе" />
+            <LegendItem color="bg-amber-500" label="открытая" />
+            <LegendItem color="bg-brand-500" label="в работе" />
             <LegendItem color="bg-emerald-500" label="закрытая" />
             <LegendItem color="bg-red-500" label="просроченная" />
           </>
@@ -317,7 +349,7 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
           <i className="h-5 border-l-[3px] border-red-500" />
           сегодня
         </span>
-        <span>Зажмите и потяните таймлайн для просмотра прошлых и будущих периодов.</span>
+        <span className="inline-flex items-center">Зажмите и потяните таймлайн для просмотра прошлых и будущих периодов.</span>
       </div>
     </section>
   );
@@ -388,8 +420,8 @@ function normalizeProjectDates(project, index) {
 }
 
 function normalizeTaskDates(task, index) {
-  const created = safeDate(task.createdAt);
-  const deadline = safeDate(task.deadline);
+  const created = safeDate(task.startDatePlan || task.createdAt);
+  const deadline = safeDate(task.endDatePlan || task.deadline);
   const closed = safeDate(task.closedAt);
   const now = new Date();
   const fallbackStart = created || new Date(now.getFullYear(), now.getMonth(), Math.max(1, now.getDate() - 10 + index));
@@ -402,6 +434,7 @@ function normalizeTaskDates(task, index) {
 
   return {
     ...task,
+    sourceId: task.id,
     id: `task:${task.id}`,
     name: task.title || `Задача ${index + 1}`,
     start: snappedStart,

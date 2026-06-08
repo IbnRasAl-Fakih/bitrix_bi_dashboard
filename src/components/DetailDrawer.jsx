@@ -72,6 +72,15 @@ export default function DetailDrawer({ detail, data, onClose }) {
 }
 
 function getDetailConfig(detail, data) {
+  if (detail.rows && detail.columns) {
+    return {
+      title: detail.title || detail.label,
+      description: detail.description || '',
+      rows: detail.rows,
+      columns: detail.columns
+    };
+  }
+
   const key = detail.key;
 
   if (key === 'activeProjects') {

@@ -21,7 +21,14 @@ export const kpiLabels = {
 
 export function emptyData() {
   return {
-    meta: { source: 'bitrix', warnings: [], realRecords: 0, availability: {} },
+    meta: {
+      source: 'bitrix',
+      warnings: [],
+      realRecords: 0,
+      availability: {},
+      strategyProjectId: '',
+      taskRelations: { available: false, source: 'unavailable', count: 0, error: null }
+    },
     kpis: {
       activeProjects: 0,
       completedProjects: 0,

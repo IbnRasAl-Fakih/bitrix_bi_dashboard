@@ -1,5 +1,6 @@
 export {
   AlertTriangle,
+  ArrowRight,
   BarChart3,
   Bell,
   BriefcaseBusiness,
@@ -14,6 +15,7 @@ export {
   Download,
   Flag,
   FilterX,
+  GitBranch,
   Maximize2,
   LayoutDashboard,
   Menu,
@@ -25,6 +27,7 @@ export {
   Settings,
   SlidersHorizontal,
   Sun,
+  Target,
   Users,
   WalletCards,
   X

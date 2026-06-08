@@ -24,7 +24,7 @@ export function formatKpi(key, value) {
 export function formatCell(key, value) {
   if (value === null || value === undefined || value === '') return '-';
   if (['income', 'expense', 'profit'].includes(key)) return formatMoney(value);
-  if (['deadline', 'createdAt', 'closedAt', 'lastActivity', 'startDate', 'endDate'].includes(key)) {
+  if (['deadline', 'createdAt', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt'].includes(key)) {
     return new Date(value).toLocaleDateString('ru-RU');
   }
   if (key === 'status') {

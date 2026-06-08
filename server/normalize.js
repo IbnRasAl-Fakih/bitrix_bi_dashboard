@@ -14,6 +14,12 @@ function dateOrNull(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function stringIds(value) {
+  if (!value) return [];
+  const values = Array.isArray(value) ? value : typeof value === 'object' ? Object.values(value) : String(value).split(',');
+  return [...new Set(values.map((item) => String(item?.id ?? item?.ID ?? item).trim()).filter((item) => item && item !== '0'))];
+}
+
 function taskStatus(task) {
   const status = String(task.STATUS ?? task.status ?? '').toLowerCase();
   if (['5', '6', '7', 'completed', 'closed'].includes(status)) return 'closed';
@@ -36,6 +42,7 @@ function emptyAnalytics(warnings = []) {
       warnings,
       generatedAt: new Date().toISOString(),
       realRecords: 0,
+      taskRelations: { available: false, source: 'unavailable', count: 0, error: null },
       availability: {
         users: false,
         projects: false,
@@ -86,12 +93,25 @@ export function normalizeBitrixData(raw, settings) {
       id: String(task.ID ?? task.id ?? index + 1),
       title: task.TITLE || task.title || `Задача ${task.ID ?? task.id ?? index + 1}`,
       projectId: String(task.GROUP_ID ?? task.groupId ?? ''),
+      parentId: String(task.PARENT_ID ?? task.parentId ?? ''),
       responsibleId: String(task.RESPONSIBLE_ID ?? task.responsibleId ?? ''),
       creatorId: String(task.CREATED_BY ?? task.createdBy ?? ''),
       status,
+      description: task.DESCRIPTION || task.description || '',
+      priority: String(task.PRIORITY ?? task.priority ?? '1'),
       deadline,
       createdAt: dateOrNull(task.CREATED_DATE ?? task.createdDate),
       closedAt: dateOrNull(task.CLOSED_DATE ?? task.closedDate),
+      activityAt: dateOrNull(task.ACTIVITY_DATE ?? task.activityDate ?? task.CHANGED_DATE ?? task.changedDate),
+      startDatePlan: dateOrNull(task.START_DATE_PLAN ?? task.startDatePlan ?? task.DATE_START ?? task.dateStart),
+      endDatePlan: dateOrNull(task.END_DATE_PLAN ?? task.endDatePlan),
+      accompliceIds: stringIds(task.ACCOMPLICES ?? task.accomplices),
+      auditorIds: stringIds(task.AUDITORS ?? task.auditors),
+      tags: Array.isArray(task.TAGS ?? task.tags) ? (task.TAGS ?? task.tags) : [],
+      relatedTaskIds: stringIds([
+        ...stringIds(task.RELATED_TASKS ?? task.relatedTasks ?? task.DEPENDS_ON ?? task.dependsOn),
+        ...(raw.taskRelations?.relations?.[String(task.ID ?? task.id ?? index + 1)] || [])
+      ]),
       plannedHours: round(plannedSeconds / 3600),
       actualHours: round(actualSeconds / 3600),
       closedHours: status === 'closed' ? round(actualSeconds / 3600) : 0,
@@ -130,6 +150,13 @@ export function normalizeBitrixData(raw, settings) {
     records: financeRecords.length,
     projectField: financeSettings.smartProjectField,
     amountField: financeSettings.smartAmountField
+  };
+  data.meta.strategyProjectId = String(settings.strategyProjectId || '');
+  data.meta.taskRelations = {
+    available: Boolean(raw.taskRelations?.available),
+    source: raw.taskRelations?.source || 'unavailable',
+    count: Object.values(raw.taskRelations?.relations || {}).reduce((total, ids) => total + ids.length, 0),
+    error: raw.taskRelations?.error || null
   };
   data.meta.availability = {
     users: users.length > 0,
@@ -332,6 +359,8 @@ function assembleAnalytics(users, projects, tasks, financeByProject, financeReco
       project: projectById.get(task.projectId)?.name || 'Без проекта',
       responsible: userById.get(task.responsibleId)?.name || 'Не назначен',
       creator: userById.get(task.creatorId)?.name || 'Не указан',
+      accomplices: task.accompliceIds.map((id) => userById.get(id)?.name).filter(Boolean),
+      auditors: task.auditorIds.map((id) => userById.get(id)?.name).filter(Boolean),
       deviation: round(task.actualHours - task.plannedHours)
     })),
     assignments,

@@ -12,6 +12,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const VIBE_API_BASE = process.env.VIBE_API_BASE || 'https://vibecode.bitrix24.tech/v1';
 const VIBE_API_KEY = process.env.VIBE_API_KEY || '';
+const BITRIX_WEBHOOK_URL = String(process.env.BITRIX_WEBHOOK_URL || '').replace(/\/+$/, '');
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 
 app.use(cors());
@@ -27,6 +28,7 @@ const state = {
   settings: {
     defaultPeriod: '30d',
     useDemoComplements: false,
+    strategyProjectId: process.env.STRATEGY_PROJECT_ID || '38',
     financeMapping: {
       projectLinkField: 'UF_CRM_PROJECT_ID',
       incomeField: 'opportunity',
@@ -101,6 +103,62 @@ async function fetchEntity(entity, params = {}) {
   return vibeFetch(`/${entity}${suffix}`);
 }
 
+async function bitrixWebhookFetch(method, params = {}, apiV3 = false) {
+  if (!BITRIX_WEBHOOK_URL) throw new Error('BITRIX_WEBHOOK_URL is not configured');
+  const baseUrl = apiV3 ? BITRIX_WEBHOOK_URL.replace('/rest/', '/rest/api/') : BITRIX_WEBHOOK_URL;
+  const url = new URL(`${baseUrl}/${method}${apiV3 ? '' : '.json'}`);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(params)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.error) throw new Error(payload.error_description || payload.error || `HTTP ${response.status}`);
+  return payload.result;
+}
+
+async function fetchTaskRelations(tasks, strategyProjectId) {
+  const strategyTasks = (tasks || []).filter((task) => String(task.GROUP_ID ?? task.groupId ?? '') === String(strategyProjectId || ''));
+  if (!BITRIX_WEBHOOK_URL) return { available: false, source: 'unavailable', relations: {}, error: null };
+
+  try {
+    const entries = await Promise.all(strategyTasks.map(async (task) => {
+      const taskId = String(task.ID ?? task.id);
+      let result;
+      try {
+        const taskResult = await bitrixWebhookFetch('tasks.task.get', {
+          id: Number(taskId),
+          select: ['relatedTasks.id', 'relatedTasks.title', 'dependsOn', 'containsRelatedTasks', 'containsGanttLinks']
+        }, true);
+        result = [
+          ...(taskResult?.item?.relatedTasks || taskResult?.relatedTasks || []),
+          ...(taskResult?.item?.dependsOn || taskResult?.dependsOn || [])
+        ];
+      } catch {
+        result = await bitrixWebhookFetch('task.item.getdependson', { TASKID: taskId });
+      }
+      return [taskId, relationIds(result, taskId)];
+    }));
+    return { available: true, source: 'bitrix-webhook', relations: Object.fromEntries(entries), error: null };
+  } catch (error) {
+    return { available: false, source: 'bitrix-webhook', relations: {}, error: sanitize(error.message) };
+  }
+}
+
+function relationIds(value, sourceTaskId) {
+  const ids = [];
+  const idKeys = new Set(['id', 'taskid', 'task_id', 'dependsonid', 'depends_on_id']);
+
+  function visit(item, key = '') {
+    if (Array.isArray(item)) return item.forEach((child) => visit(child));
+    if (item && typeof item === 'object') return Object.entries(item).forEach(([childKey, child]) => visit(child, childKey));
+    if ((!key || idKeys.has(key.toLowerCase())) && /^\d+$/.test(String(item || ''))) ids.push(String(item));
+  }
+
+  visit(value);
+  return [...new Set(ids.filter((id) => id !== '0' && id !== String(sourceTaskId)))];
+}
+
 async function fetchFinanceSmartProcessItems(settings) {
   const warnings = [];
   try {
@@ -163,6 +221,7 @@ async function syncFromBitrix() {
       errors
     };
 
+    raw.taskRelations = await fetchTaskRelations(raw.tasks, state.settings.strategyProjectId);
     const data = normalizeBitrixData(raw, state.settings);
     state.data = data;
     state.lastSyncAt = new Date().toISOString();
