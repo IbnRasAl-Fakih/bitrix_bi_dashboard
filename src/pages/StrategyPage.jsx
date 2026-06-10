@@ -148,6 +148,7 @@ function DirectionCard({ direction, selected, expanded, onSelect, onExpand }) {
 
 function RelationshipMap({ directions, orphans, allTasks, relationMeta }) {
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [showConnections, setShowConnections] = useState(true);
   const [layout, setLayout] = useState({ width: 0, height: 0, paths: [] });
   const boardRef = useRef(null);
   const cardRefs = useRef(new Map());
@@ -170,7 +171,7 @@ function RelationshipMap({ directions, orphans, allTasks, relationMeta }) {
       observer.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [directions, boardEdges.length]);
+  }, [directions, boardEdges.length, showConnections]);
 
   function setCardRef(taskId, node) {
     if (node) cardRefs.current.set(taskId, node);
@@ -184,7 +185,12 @@ function RelationshipMap({ directions, orphans, allTasks, relationMeta }) {
           <h2 className="text-lg font-bold">Стратегическая доска связей</h2>
           <p className="mt-1 text-sm text-slate-500">Карта показывает, как инициативы внутри направлений усиливают друг друга и где есть рабочие зависимости.</p>
         </div>
-        {selectedTaskId && <button className="btn h-9 min-h-9 text-xs" onClick={() => setSelectedTaskId('')}>Показать все связи</button>}
+        <div className="flex flex-wrap gap-2">
+          {selectedTaskId && <button className="btn h-9 min-h-9 text-xs" onClick={() => setSelectedTaskId('')}>Показать все связи</button>}
+          <button className="btn h-9 min-h-9 text-xs" onClick={() => setShowConnections((value) => !value)}>
+            {showConnections ? 'Скрыть связи' : 'Показать связи'}
+          </button>
+        </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 dark:bg-blue-950/30 dark:text-blue-200"><GitBranch size={13} /> Направлений: {directions.length}</span>
@@ -201,7 +207,7 @@ function RelationshipMap({ directions, orphans, allTasks, relationMeta }) {
 
       <div className="mt-4 overflow-auto rounded-xl bg-slate-100/70 p-5 dark:bg-slate-950/50" onClick={() => setSelectedTaskId('')}>
         <div className="relative min-w-max" ref={boardRef}>
-          <ConnectionArrows layout={layout} edges={boardEdges} selectedTaskId={selectedTaskId} />
+          {showConnections && <ConnectionArrows layout={layout} edges={boardEdges} selectedTaskId={selectedTaskId} />}
           <div className="relative z-10 flex items-start gap-10">
             {directions.map((direction) => (
               <StrategyColumn
@@ -262,16 +268,49 @@ function StrategyColumn({ direction, linkedTaskIds, selectedLinkedIds, selectedT
 function ConnectionArrows({ layout, edges, selectedTaskId }) {
   if (!layout.paths.length) return null;
   return (
-    <svg className="pointer-events-none absolute inset-0 z-20 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
-      <defs>
-        <marker id="strategy-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#8b5cf6" /></marker>
-      </defs>
-      {layout.paths.map((path, index) => {
-        const edge = edges[index];
-        const active = !selectedTaskId || edge.from.id === selectedTaskId || edge.to.id === selectedTaskId;
-        return <path d={path} fill="none" markerEnd="url(#strategy-arrow)" stroke="#8b5cf6" strokeDasharray="7 5" strokeLinecap="round" strokeWidth={active ? 2.5 : 1.5} opacity={active ? 0.9 : 0.12} key={edge.key} />;
-      })}
-    </svg>
+    <>
+      <svg className="pointer-events-none absolute inset-0 z-0 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
+        {layout.paths.map((path, index) => {
+          const edge = edges[index];
+          const active = !selectedTaskId || edge.from.id === selectedTaskId || edge.to.id === selectedTaskId;
+          return <ConnectionPath path={path} active={active} key={edge.key} />;
+        })}
+      </svg>
+      <svg className="pointer-events-none absolute inset-0 z-20 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
+        <defs>
+          <marker id="strategy-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#8b5cf6" /></marker>
+        </defs>
+        {layout.paths.map((path, index) => {
+          const edge = edges[index];
+          const selectedConnection = edge.from.id === selectedTaskId || edge.to.id === selectedTaskId;
+          return (
+            <ConnectionPath
+              path={path}
+              active={!selectedTaskId || selectedConnection}
+              markerEnd="url(#strategy-arrow)"
+              markerOnly={!selectedConnection}
+              key={edge.key}
+            />
+          );
+        })}
+      </svg>
+    </>
+  );
+}
+
+function ConnectionPath({ path, active, markerEnd, markerOnly = false }) {
+  return (
+    <path
+      d={path}
+      fill="none"
+      markerEnd={markerEnd}
+      stroke={markerOnly ? 'transparent' : '#8b5cf6'}
+      strokeDasharray="7 5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={active ? 2.5 : 1.5}
+      opacity={active ? 0.9 : 0.12}
+    />
   );
 }
 
@@ -297,11 +336,12 @@ function buildArrowLayout(board, edges, refs) {
       const radius = Math.min(18, Math.abs(y2 - y1) / 2);
       return `M ${startX} ${y1} H ${side - radius} Q ${side} ${y1} ${side} ${y1 + verticalDirection * radius} V ${y2 - verticalDirection * radius} Q ${side} ${y2} ${side - radius} ${y2} H ${endX}`;
     }
-    const midX = x1 + (x2 - x1) / 2;
     const horizontalDirection = leftToRight ? 1 : -1;
+    const targetApproachLength = 32;
+    const targetGutterX = x2 - horizontalDirection * targetApproachLength;
     const verticalDirection = y2 >= y1 ? 1 : -1;
-    const radius = Math.min(18, Math.abs(x2 - x1) / 4, Math.abs(y2 - y1) / 2 || 18);
-    return `M ${x1} ${y1} H ${midX - horizontalDirection * radius} Q ${midX} ${y1} ${midX} ${y1 + verticalDirection * radius} V ${y2 - verticalDirection * radius} Q ${midX} ${y2} ${midX + horizontalDirection * radius} ${y2} H ${x2}`;
+    const radius = Math.min(14, targetApproachLength / 2, Math.abs(targetGutterX - x1) / 4, Math.abs(y2 - y1) / 2 || 14);
+    return `M ${x1} ${y1} H ${targetGutterX - horizontalDirection * radius} Q ${targetGutterX} ${y1} ${targetGutterX} ${y1 + verticalDirection * radius} V ${y2 - verticalDirection * radius} Q ${targetGutterX} ${y2} ${targetGutterX + horizontalDirection * radius} ${y2} H ${x2}`;
   }).filter(Boolean);
   return { width: board.scrollWidth, height: board.scrollHeight, paths };
 }
