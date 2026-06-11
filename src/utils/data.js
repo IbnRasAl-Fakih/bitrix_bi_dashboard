@@ -26,7 +26,6 @@ export function emptyData() {
       warnings: [],
       realRecords: 0,
       availability: {},
-      strategyProjectId: '',
       taskRelations: { available: false, source: 'unavailable', count: 0, error: null }
     },
     kpis: {

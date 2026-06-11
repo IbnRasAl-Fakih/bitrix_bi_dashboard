@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Occupancy from './pages/Occupancy.jsx';
 import TimePage from './pages/TimePage.jsx';
 import StrategyPage from './pages/StrategyPage.jsx';
+import StrategyDetailPage from './pages/StrategyDetailPage.jsx';
 import ProjectsPage from './pages/ProjectsPage.jsx';
 import FinancePage from './pages/FinancePage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
@@ -105,6 +106,7 @@ export default function App() {
             <Route path="/occupancy" element={<Occupancy data={filtered} filters={filters} setFilters={setFilters} />} />
             <Route path="/time" element={<TimePage data={filtered} />} />
             <Route path="/strategy" element={<StrategyPage data={data} setDetail={setDetail} />} />
+            <Route path="/strategy/:projectId" element={<StrategyDetailPage data={data} setDetail={setDetail} />} />
             <Route path="/projects" element={<ProjectsPage data={filtered} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />

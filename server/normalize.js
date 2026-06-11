@@ -20,6 +20,14 @@ function stringIds(value) {
   return [...new Set(values.map((item) => String(item?.id ?? item?.ID ?? item).trim()).filter((item) => item && item !== '0'))];
 }
 
+function stringTags(value) {
+  if (!value) return [];
+  const values = Array.isArray(value) ? value : typeof value === 'object' ? Object.values(value) : String(value).split(',');
+  return [...new Set(values
+    .map((item) => String(item?.name ?? item?.NAME ?? item?.value ?? item?.VALUE ?? item).trim())
+    .filter(Boolean))];
+}
+
 function taskStatus(task) {
   const status = String(task.STATUS ?? task.status ?? '').toLowerCase();
   if (['5', '6', '7', 'completed', 'closed'].includes(status)) return 'closed';
@@ -79,8 +87,9 @@ export function normalizeBitrixData(raw, settings) {
     name: group.NAME || group.name || `Проект ${group.ID ?? group.id ?? index + 1}`,
     status: String(group.CLOSED ?? group.closed ?? '').toUpperCase() === 'Y' ? 'completed' : 'active',
     responsibleId: String(group.OWNER_ID ?? group.ownerId ?? ''),
-    startDate: dateOrNull(group.DATE_CREATE ?? group.dateCreate),
-    endDate: dateOrNull(group.DATE_FINISH ?? group.dateFinish),
+    startDate: dateOrNull(group.PROJECT_DATE_START ?? group.projectDateStart ?? group.DATE_START ?? group.dateStart),
+    endDate: dateOrNull(group.PROJECT_DATE_FINISH ?? group.projectDateFinish ?? group.DATE_FINISH ?? group.dateFinish),
+    tags: stringTags(group.TAGS ?? group.tags ?? group.KEYWORDS ?? group.keywords),
     source: 'bitrix'
   }));
 
@@ -151,7 +160,6 @@ export function normalizeBitrixData(raw, settings) {
     projectField: financeSettings.smartProjectField,
     amountField: financeSettings.smartAmountField
   };
-  data.meta.strategyProjectId = String(settings.strategyProjectId || '');
   data.meta.taskRelations = {
     available: Boolean(raw.taskRelations?.available),
     source: raw.taskRelations?.source || 'unavailable',
@@ -537,9 +545,11 @@ function nullableRound(value) {
 }
 
 function applyDemoComplements(data) {
+  addDemoStrategy(data);
+
   const demoWarnings = [
     ...data.meta.warnings,
-    'Включены демонстрационные дополнения: недостающие часы и финансовые ряды добавлены только для показа функционала дашбордов.'
+    'Включены демонстрационные дополнения: задачи, роли, часы и финансы добавлены к существующим целям только для показа функционала дашбордов.'
   ];
 
   const projects = data.projects.length ? data.projects : [
@@ -642,6 +652,12 @@ function applyDemoComplements(data) {
   data.charts.hoursByEmployee = data.users.map((user) => ({ name: user.name, hours: user.actualHours || 0, closed: user.closedHours || 0, load: user.load || 0 })).filter((row) => row.hours || row.closed);
   data.charts.hoursByProject = data.projects.map((project) => ({ name: project.name, planned: project.plannedHours || 0, actual: project.actualHours || 0, closed: project.closedHours || 0 })).filter((row) => row.planned || row.actual || row.closed);
   data.charts.occupancyShare = data.projects.map((project) => ({ name: project.name, value: project.actualHours || 0 })).filter((row) => row.value);
+  data.charts.financeByProject = data.projects.filter((project) => project.income !== null || project.expense !== null || project.profit !== null).map((project) => ({
+    name: project.name,
+    income: project.income || 0,
+    expense: project.expense || 0,
+    profit: project.profit || 0
+  }));
   data.charts.stackedHours = data.projects.map((project) => {
     const row = { name: project.name };
     data.assignments.filter((assignment) => assignment.project === project.name && assignment.actualHours > 0).forEach((assignment) => { row[assignment.employee] = assignment.actualHours; });
@@ -675,6 +691,14 @@ function applyDemoComplements(data) {
 
   data.kpis = {
     ...data.kpis,
+    activeProjects: data.projects.filter((project) => project.status === 'active').length,
+    completedProjects: data.projects.filter((project) => project.status === 'completed').length,
+    employees: data.users.length,
+    tasks: data.tasks.length,
+    openTasks: data.tasks.filter((task) => task.status !== 'closed').length,
+    closedTasks: data.tasks.filter((task) => task.status === 'closed').length,
+    overdueTasks: data.tasks.filter((task) => task.overdue).length,
+    completionRate: Math.round((data.tasks.filter((task) => task.status === 'closed').length / Math.max(data.tasks.length, 1)) * 100),
     plannedHours: round(sum(data.projects, 'plannedHours')),
     actualHours: round(sum(data.projects, 'actualHours')),
     closedHours: round(sum(data.projects, 'closedHours')),
@@ -699,4 +723,323 @@ function applyDemoComplements(data) {
   };
 
   return data;
+}
+
+function addDemoStrategy(data) {
+  const goals = data.projects.filter((project) => (project.tags || []).some((tag) => String(tag).trim().toLowerCase() === 'цель'));
+  if (!goals.length) return;
+
+  const people = [
+    ['demo-strategy-user-1', 'Айдана Садыкова', 'Стратегия', 'Директор по развитию'],
+    ['demo-strategy-user-2', 'Ерлан Касымов', 'Продажи', 'Коммерческий директор'],
+    ['demo-strategy-user-3', 'Диана Ли', 'Продукт', 'Руководитель продукта'],
+    ['demo-strategy-user-4', 'Максим Орлов', 'Инженерия', 'Технический директор'],
+    ['demo-strategy-user-5', 'Алия Нургалиева', 'Финансы', 'Финансовый директор'],
+    ['demo-strategy-user-6', 'Руслан Ахметов', 'Операции', 'Руководитель проектов'],
+    ['demo-strategy-user-7', 'Мария Ким', 'Консалтинг', 'Архитектор решений'],
+    ['demo-strategy-user-8', 'Тимур Жаксылыков', 'Производство', 'Главный инженер'],
+    ['demo-strategy-user-9', 'Ольга Сафина', 'Маркетинг', 'Руководитель маркетинга'],
+    ['demo-strategy-user-10', 'Арман Беков', 'Продажи', 'Менеджер ключевых клиентов'],
+    ['demo-strategy-user-11', 'Светлана Чен', 'Качество', 'Руководитель по качеству'],
+    ['demo-strategy-user-12', 'Никита Волков', 'Аналитика', 'Бизнес-аналитик']
+  ].map(([id, name, department, position]) => ({
+    id, name, department, position, source: 'demo-strategy',
+    projects: 2, tasks: 6, closedTasks: 3, overdueTasks: 1,
+    plannedHours: 120, actualHours: 104, closedHours: 62, load: 65,
+    loadState: 'normal', efficiency: 78, lastActivity: demoDate(-2)
+  }));
+  const userById = new Map(people.map((user) => [user.id, user]));
+  const existingUserIds = new Set(data.users.map((user) => user.id));
+  data.users.push(...people.filter((user) => !existingUserIds.has(user.id)));
+
+  const strategyTasks = [];
+  const financeRecords = [];
+  goals.forEach((goal, goalIndex) => {
+    if (data.tasks.some((task) => task.projectId === goal.id && task.source === 'demo-strategy')) return;
+
+    const company = (goal.tags || []).some((tag) => String(tag).trim().toLowerCase() === 'iqse') ? 'iqse' : 'iqs';
+    const owner = goal.responsibleId && data.users.some((user) => user.id === goal.responsibleId)
+      ? goal.responsibleId
+      : `demo-strategy-user-${(goalIndex % 6) + 1}`;
+    const start = goal.startDate ? Math.round((new Date(goal.startDate).getTime() - Date.now()) / 86400000) : -120 - goalIndex * 20;
+    const end = goal.endDate ? Math.round((new Date(goal.endDate).getTime() - Date.now()) / 86400000) : 120 + goalIndex * 30;
+    const directions = demoGoalScenario(goal, goalIndex, company);
+
+    let sequence = 0;
+    directions.forEach(([directionTitle, initiatives], directionIndex) => {
+      const directionId = `demo-strategy-${goal.id}-direction-${directionIndex + 1}`;
+      const personalizedInitiatives = initiatives.map(([title, status, ownerIndex], initiativeIndex) => [
+        title,
+        demoInitiativeStatus(status, goalIndex, directionIndex, initiativeIndex),
+        ownerIndex
+      ]);
+      const directionStatus = personalizedInitiatives.every(([, status]) => status === 'closed') ? 'closed' : 'progress';
+      strategyTasks.push(demoStrategyTask({
+        id: directionId, projectId: goal.id, title: directionTitle, status: directionStatus,
+        ownerId: owner, accompliceIds: ['demo-strategy-user-1'], auditorIds: ['demo-strategy-user-5'],
+        start: start + directionIndex * 25, end: end - (1 - directionIndex) * 35, sequence: sequence++
+      }, new Map(data.users.map((user) => [user.id, user]))));
+      personalizedInitiatives.forEach(([title, status, ownerIndex], initiativeIndex) => {
+        const overdue = goalIndex === 0 && directionIndex === 0 && initiativeIndex === 1;
+        const taskId = `${directionId}-task-${initiativeIndex + 1}`;
+        const memberNumber = ((ownerIndex + goalIndex * 2 - 1) % people.length) + 1;
+        const accompliceNumber = (memberNumber % people.length) + 1;
+        const observerNumber = ((memberNumber + 3) % people.length) + 1;
+        strategyTasks.push(demoStrategyTask({
+          id: taskId, projectId: goal.id, parentId: directionId, title, status: overdue ? 'progress' : status,
+          ownerId: `demo-strategy-user-${memberNumber}`,
+          accompliceIds: [`demo-strategy-user-${accompliceNumber}`, 'demo-strategy-user-1'],
+          auditorIds: [owner, `demo-strategy-user-${observerNumber}`],
+          start: start + 20 + initiativeIndex * 45 + directionIndex * 20,
+          end: overdue ? -12 : Math.min(end - 15, 30 + initiativeIndex * 45 + directionIndex * 20),
+          sequence: sequence++,
+          relatedTaskIds: initiativeIndex ? [`${directionId}-task-${initiativeIndex}`] : []
+        }, userById));
+      });
+    });
+
+    if (goal.income === null || goal.expense === null || goal.profit === null) {
+      const income = 48_000_000 + goalIndex * 17_000_000;
+      const expense = Math.round(income * (0.62 + (goalIndex % 3) * 0.05));
+      goal.income = income;
+      goal.expense = expense;
+      goal.profit = income - expense;
+      goal.margin = Math.round((goal.profit / income) * 100);
+      financeRecords.push(
+        demoFinanceRecord(`demo-strategy-${goal.id}-income`, goal.name, income, 'income', -30 - goalIndex * 12, 'Продажи'),
+        demoFinanceRecord(`demo-strategy-${goal.id}-expense`, goal.name, expense, 'expense', -18 - goalIndex * 9, 'Проектные затраты')
+      );
+    }
+  });
+
+  data.tasks.push(...strategyTasks);
+  goals.forEach((goal) => {
+    const tasks = data.tasks.filter((task) => task.projectId === goal.id);
+    goal.taskCount = tasks.length;
+    goal.closedTasks = tasks.filter((task) => task.status === 'closed').length;
+    goal.openTasks = tasks.length - goal.closedTasks;
+    goal.overdueTasks = tasks.filter((task) => task.overdue).length;
+    goal.plannedHours = round(sum(tasks, 'plannedHours'));
+    goal.actualHours = round(sum(tasks, 'actualHours'));
+    goal.closedHours = round(sum(tasks, 'closedHours'));
+    goal.team = [...new Set(tasks.map((task) => task.responsible).filter(Boolean))];
+  });
+  data.assignments.push(...buildAssignments(data.users, goals, strategyTasks));
+  data.financeRecords.push(...financeRecords);
+  addDemoGoalProjects(data, goals, people);
+  data.meta.taskRelations = {
+    available: true,
+    source: 'demo-strategy',
+    count: strategyTasks.reduce((total, task) => total + task.relatedTaskIds.length, 0),
+    error: null
+  };
+}
+
+function addDemoGoalProjects(data, goals, people) {
+  if (data.projects.some((project) => project.source === 'demo-goal-project')) return;
+  const linkedProjects = [];
+  const projectTasks = [];
+  const projectNames = [
+    ['Пилотное внедрение', 'Масштабирование решения'],
+    ['Разработка продукта', 'Коммерческий запуск'],
+    ['Подготовка инфраструктуры', 'Внедрение у заказчика'],
+    ['Проектирование решения', 'Промышленная эксплуатация']
+  ];
+
+  goals.forEach((goal, goalIndex) => {
+    const company = (goal.tags || []).some((tag) => String(tag).toLowerCase() === 'iqse') ? 'iqse' : 'iqs';
+    const shortGoal = String(goal.name).replace(/^Перевод клиентов на |^Продвижение |^Развитие |^Выход на рынок |^Рост /i, '');
+    for (let projectIndex = 0; projectIndex < 2; projectIndex += 1) {
+      const id = `demo-linked-${goal.id}-${projectIndex + 1}`;
+      const owner = people[(goalIndex * 2 + projectIndex + 3) % people.length];
+      const income = 18_000_000 + goalIndex * 4_500_000 + projectIndex * 7_000_000;
+      const expense = Math.round(income * (0.58 + ((goalIndex + projectIndex) % 4) * 0.06));
+      const tasks = Array.from({ length: 5 + ((goalIndex + projectIndex) % 3) }, (_, taskIndex) => demoProjectTask({
+        id: `${id}-task-${taskIndex + 1}`,
+        projectId: id,
+        title: ['Анализ требований', 'Проектирование', 'Разработка и настройка', 'Тестирование', 'Ввод в эксплуатацию', 'Обучение команды', 'Подтверждение эффекта'][taskIndex],
+        owner: people[(goalIndex + projectIndex + taskIndex) % people.length],
+        status: taskIndex < 2 + ((goalIndex + projectIndex) % 4) ? 'closed' : taskIndex === 3 ? 'progress' : 'open',
+        start: -90 + goalIndex * 4 + projectIndex * 25 + taskIndex * 18,
+        end: -55 + goalIndex * 4 + projectIndex * 25 + taskIndex * 22,
+        index: taskIndex
+      }));
+      projectTasks.push(...tasks);
+      const closed = tasks.filter((task) => task.status === 'closed').length;
+      linkedProjects.push({
+        id,
+        name: `${projectNames[goalIndex % projectNames.length][projectIndex]}: ${shortGoal}`,
+        status: 'active',
+        responsibleId: owner.id,
+        responsible: owner.name,
+        team: [...new Set(tasks.map((task) => task.responsible))],
+        startDate: tasks[0].startDatePlan,
+        endDate: tasks.at(-1).endDatePlan,
+        tags: [company, 'демо-проект'],
+        goalId: goal.id,
+        company,
+        source: 'demo-goal-project',
+        taskCount: tasks.length,
+        closedTasks: closed,
+        openTasks: tasks.length - closed,
+        overdueTasks: tasks.filter((task) => task.overdue).length,
+        plannedHours: round(sum(tasks, 'plannedHours')),
+        actualHours: round(sum(tasks, 'actualHours')),
+        closedHours: round(sum(tasks, 'closedHours')),
+        income,
+        expense,
+        profit: income - expense,
+        margin: Math.round(((income - expense) / income) * 100),
+        progress: Math.round((closed / tasks.length) * 100),
+        risk: tasks.some((task) => task.overdue) ? 'high' : closed / tasks.length < 0.45 ? 'medium' : 'low'
+      });
+    }
+  });
+
+  ['iqs', 'iqse'].forEach((company, index) => {
+    const id = `demo-unlinked-${company}`;
+    const owner = people[9 + index];
+    const tasks = Array.from({ length: 4 + index }, (_, taskIndex) => demoProjectTask({
+      id: `${id}-task-${taskIndex + 1}`, projectId: id,
+      title: ['Уточнить бизнес-кейс', 'Согласовать ресурсы', 'Подготовить прототип', 'Провести пилот', 'Принять решение о масштабировании'][taskIndex],
+      owner: people[(8 + taskIndex + index) % people.length],
+      status: taskIndex < 2 ? 'closed' : 'progress', start: -55 + taskIndex * 16, end: -20 + taskIndex * 22, index: taskIndex
+    }));
+    projectTasks.push(...tasks);
+    const income = 24_000_000 + index * 8_000_000;
+    const expense = Math.round(income * 0.72);
+    linkedProjects.push({
+      id, name: index ? 'Модернизация инженерной лаборатории' : 'Корпоративный портал знаний',
+      status: 'active', responsibleId: owner.id, responsible: owner.name,
+      team: [...new Set(tasks.map((task) => task.responsible))], startDate: tasks[0].startDatePlan, endDate: tasks.at(-1).endDatePlan,
+      tags: [company, 'демо-проект'], goalId: null, company, source: 'demo-goal-project',
+      taskCount: tasks.length, closedTasks: 2, openTasks: tasks.length - 2, overdueTasks: tasks.filter((task) => task.overdue).length,
+      plannedHours: round(sum(tasks, 'plannedHours')), actualHours: round(sum(tasks, 'actualHours')), closedHours: round(sum(tasks, 'closedHours')),
+      income, expense, profit: income - expense, margin: 28, progress: Math.round((2 / tasks.length) * 100), risk: 'medium'
+    });
+  });
+
+  data.projects.push(...linkedProjects);
+  data.tasks.push(...projectTasks);
+  data.assignments.push(...buildAssignments(data.users, linkedProjects, projectTasks));
+}
+
+function demoProjectTask({ id, projectId, title, owner, status, start, end, index }) {
+  const closed = status === 'closed';
+  const endDate = demoDate(end);
+  const plannedHours = 48 + index * 12;
+  const actualHours = closed ? Math.round(plannedHours * 0.92) : Math.round(plannedHours * 0.58);
+  return {
+    id, title, projectId, parentId: '0', responsibleId: owner.id, responsible: owner.name,
+    creatorId: 'demo-strategy-user-6', creator: 'Руслан Ахметов', status,
+    description: 'Демонстрационная задача проекта, связанного со стратегической целью.',
+    priority: index % 3 === 0 ? '2' : '1', deadline: endDate, createdAt: demoDate(start - 7),
+    closedAt: closed ? demoDate(Math.min(end - 3, -2)) : null, activityAt: demoDate(-1 - index),
+    startDatePlan: demoDate(start), endDatePlan: endDate, accompliceIds: [], auditorIds: [],
+    accomplices: [], auditors: [], tags: ['проект'], relatedTaskIds: [], plannedHours, actualHours,
+    closedHours: closed ? actualHours : 0, overdue: !closed && new Date(endDate) < new Date(),
+    deviation: actualHours - plannedHours, url: '', source: 'demo-goal-project'
+  };
+}
+
+function demoInitiativeStatus(defaultStatus, goalIndex, directionIndex, initiativeIndex) {
+  const patterns = [
+    ['closed', 'progress', 'open', 'closed', 'progress', 'open'],
+    ['closed', 'closed', 'progress', 'closed', 'progress', 'open'],
+    ['closed', 'closed', 'closed', 'progress', 'progress', 'open'],
+    ['closed', 'closed', 'closed', 'closed', 'progress', 'open'],
+    ['closed', 'progress', 'progress', 'open', 'open', 'open']
+  ];
+  return patterns[goalIndex % patterns.length]?.[directionIndex * 3 + initiativeIndex] || defaultStatus;
+}
+
+function demoGoalScenario(goal, index, company) {
+  const title = String(goal.name || '').toLowerCase();
+  const scenarios = [
+    [['Миграционная готовность клиентов', [['Провести оценку текущих SAP-ландшафтов', 'closed', 4], ['Согласовать дорожные карты перехода', 'progress', 6], ['Подготовить пакет миграционных предложений', 'closed', 2]]], ['Центр компетенций S/4HANA', [['Сертифицировать консультантов', 'progress', 3], ['Создать библиотеку типовых миграций', 'closed', 1], ['Запустить контроль качества проектов', 'open', 5]]]],
+    [['Продуктовый портфель Business AI', [['Определить приоритетные AI-сценарии', 'closed', 3], ['Создать демонстрационные прототипы', 'progress', 4], ['Провести пилоты с ключевыми клиентами', 'progress', 2]]], ['Экспертиза и партнерство SAP', [['Сертифицировать AI-команду', 'closed', 1], ['Согласовать совместный go-to-market', 'progress', 6], ['Подготовить референсную архитектуру', 'open', 5]]]],
+    [['Облачное предложение SAP', [['Сформировать каталог облачных сервисов', 'closed', 3], ['Рассчитать TCO для целевых сегментов', 'closed', 5], ['Запустить пакет RISE with SAP', 'progress', 2]]], ['Продвижение и продажи', [['Подготовить отраслевые кампании', 'progress', 1], ['Обучить команду продаж', 'closed', 6], ['Конвертировать пилоты в контракты', 'open', 2]]]],
+    [['MES-продукт и архитектура', [['Определить MVP для производственных клиентов', 'closed', 4], ['Разработать интеграцию с ERP', 'progress', 3], ['Подготовить промышленный релиз', 'open', 6]]], ['Выход на рынок MES', [['Выбрать пилотные предприятия', 'closed', 2], ['Провести отраслевую демонстрацию', 'progress', 1], ['Получить первый коммерческий контракт', 'open', 5]]]],
+    [['Инфраструктурное решение ЦОД', [['Разработать типовую архитектуру ЦОД', 'closed', 4], ['Сформировать пул поставщиков', 'progress', 6], ['Подтвердить сметную модель', 'closed', 5]]], ['Коммерциализация ЦОД', [['Подготовить предложения для трех сегментов', 'progress', 2], ['Заключить партнерские соглашения', 'closed', 1], ['Запустить первый проект', 'open', 6]]]],
+    [['APC/ИИ-продукт', [['Подготовить модель оптимизации процесса', 'closed', 3], ['Интегрировать данные АСУ ТП', 'progress', 4], ['Подтвердить экономический эффект пилота', 'progress', 5]]], ['Нефтегазовый рынок', [['Выбрать пилотные установки', 'closed', 6], ['Согласовать требования промышленной безопасности', 'closed', 1], ['Масштабировать решение на клиента', 'open', 2]]]],
+    [['Сертификация и документация', [['Подготовить техническое досье', 'closed', 4], ['Завершить лабораторные испытания', 'progress', 6], ['Подать комплект документов в комиссию', 'open', 1]]], ['Локализация производства', [['Утвердить локальных поставщиков', 'closed', 5], ['Организовать контроль качества', 'progress', 3], ['Подготовиться к производственному аудиту', 'progress', 6]]]],
+    [['Экспортное предложение', [['Адаптировать услуги под целевые страны', 'closed', 3], ['Подготовить экспортное ценообразование', 'progress', 5], ['Локализовать коммерческие материалы', 'closed', 2]]], ['Выход на зарубежные рынки', [['Выбрать локальных партнеров', 'progress', 1], ['Провести встречи с заказчиками', 'closed', 6], ['Заключить первый экспортный контракт', 'open', 2]]]],
+    [['Экономика сервисных контрактов', [['Пересчитать маржинальность портфеля', 'closed', 5], ['Обновить модели ценообразования', 'progress', 2], ['Согласовать KPI доходности', 'closed', 1]]], ['Операционная эффективность АСУ ТП', [['Сократить время реакции поддержки', 'progress', 6], ['Автоматизировать сервисную отчетность', 'closed', 4], ['Запустить допродажи по установленной базе', 'open', 2]]]]
+  ];
+  const matched = title.includes('s/4') ? 0
+    : title.includes('business ai') ? 1
+      : title.includes('облач') ? 2
+        : title.includes('mes') ? 3
+          : title.includes('цод') ? 4
+            : title.includes('apc') || title.includes('ии для') ? 5
+              : title.includes('реестр') ? 6
+                : title.includes('экспорт') || title.includes('рубеж') ? 7
+                  : title.includes('доходност') || title.includes('асу тп') ? 8
+                    : -1;
+  if (matched >= 0) return scenarios[matched];
+  return company === 'iqse'
+    ? [['Проектная реализация', [['Утвердить план достижения цели', 'closed', 6], ['Устранить ключевые технические риски', 'progress', 4], ['Подтвердить готовность результата', 'open', 3]]], ['Экономический эффект', [['Согласовать бюджет', 'closed', 5], ['Подтвердить эффект с заказчиком', 'progress', 2], ['Закрыть итоговые KPI', index % 2 ? 'open' : 'progress', 1]]]]
+    : [['Коммерческий результат', [['Согласовать финансовую модель', 'closed', 2], ['Сформировать воронку возможностей', 'progress', 1], ['Закрепить план продаж', 'closed', 6]]], ['Продукт и масштабирование', [['Подтвердить потребности клиентов', 'closed', 3], ['Подготовить план развития решения', 'progress', 4], ['Запустить контроль KPI', 'open', 5]]]];
+}
+
+function demoStrategyTask(definition, userById) {
+  const responsible = userById.get(definition.ownerId);
+  const closed = definition.status === 'closed';
+  const plannedHours = 32 + (definition.sequence % 5) * 12;
+  const actualHours = closed ? Math.round(plannedHours * (0.82 + (definition.sequence % 3) * 0.08)) : Math.round(plannedHours * 0.55);
+  const endDate = demoDate(definition.end);
+  const accompliceIds = [...new Set((definition.accompliceIds || []).filter((id) => id !== definition.ownerId))];
+  const auditorIds = [...new Set((definition.auditorIds || []).filter((id) => id !== definition.ownerId))];
+  return {
+    id: definition.id,
+    title: definition.title,
+    projectId: definition.projectId,
+    parentId: definition.parentId || '0',
+    responsibleId: definition.ownerId,
+    responsible: responsible?.name || 'Не назначен',
+    creatorId: 'demo-strategy-user-1',
+    creator: userById.get('demo-strategy-user-1')?.name,
+    status: definition.status,
+    description: 'Демонстрационная стратегическая инициатива для презентации руководству.',
+    priority: definition.sequence % 4 === 0 ? '2' : '1',
+    deadline: endDate,
+    createdAt: demoDate(definition.start - 10),
+    closedAt: closed ? demoDate(Math.min(definition.end - 5, -3)) : null,
+    activityAt: demoDate(-1 - (definition.sequence % 7)),
+    startDatePlan: demoDate(definition.start),
+    endDatePlan: endDate,
+    accompliceIds,
+    auditorIds,
+    accomplices: accompliceIds.map((id) => userById.get(id)?.name).filter(Boolean),
+    auditors: auditorIds.map((id) => userById.get(id)?.name).filter(Boolean),
+    tags: ['стратегия', definition.parentId ? 'инициатива' : 'направление'],
+    relatedTaskIds: definition.relatedTaskIds || [],
+    plannedHours,
+    actualHours,
+    closedHours: closed ? actualHours : 0,
+    overdue: !closed && new Date(endDate).getTime() < Date.now(),
+    deviation: actualHours - plannedHours,
+    url: '',
+    source: 'demo-strategy'
+  };
+}
+
+function demoFinanceRecord(id, projectName, amount, kind, dayOffset, article) {
+  return {
+    id,
+    projectName,
+    amount,
+    signedAmount: kind === 'expense' ? -amount : amount,
+    kind,
+    date: demoDate(dayOffset),
+    hierarchy: kind === 'income' ? 'Sales' : 'CoGS',
+    article,
+    type: 'Демонстрационные данные',
+    dealId: null,
+    source: 'demo-strategy'
+  };
+}
+
+function demoDate(dayOffset) {
+  return new Date(Date.now() + dayOffset * 86400000).toISOString();
 }

@@ -1,112 +1,79 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import ChartCard from '../components/ChartCard.jsx';
-import DataTable from '../components/DataTable.jsx';
-import Metric from '../components/Metric.jsx';
 import { EmptyState } from '../components/DataState.jsx';
-import { Gantt } from '../components/ProjectWidgets.jsx';
-import { BarSimple, Donut } from '../components/charts.jsx';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock, GitBranch, Target, Users } from '../icons/index.jsx';
+import Metric from '../components/Metric.jsx';
+import MoneyValue from '../components/MoneyValue.jsx';
+import { BarSimple, Donut, FinanceBars } from '../components/charts.jsx';
+import { AlertTriangle, ArrowRight, BriefcaseBusiness, Calendar, CheckCircle2, Target } from '../icons/index.jsx';
 
-const strategyColumns = [
-  ['level', 'Уровень'], ['direction', 'Направление'], ['title', 'Название'], ['team', 'Команда'],
-  ['status', 'Статус'], ['planPeriod', 'Плановый период'], ['overdue', 'Просрочка'], ['url', 'Ссылка']
-];
+const COMPANY_FILTERS = [['all', 'Все компании'], ['iqs', 'iQ-Solutions'], ['iqse', 'IQS Engineering']];
 
 export default function StrategyPage({ data, setDetail }) {
-  const strategyProjectId = String(data.meta.strategyProjectId || '38');
-  const project = data.projects.find((item) => item.id === strategyProjectId);
-  const strategyTasks = data.tasks.filter((task) => task.projectId === strategyProjectId);
-  const [selectedDirectionId, setSelectedDirectionId] = useState('');
-  const [expanded, setExpanded] = useState({});
-  const model = useMemo(() => buildStrategyModel(strategyTasks), [strategyTasks]);
-  const visibleTasks = selectedDirectionId
-    ? strategyTasks.filter((task) => task.id === selectedDirectionId || task.parentId === selectedDirectionId)
-    : strategyTasks;
-  const drawerRows = strategyTasks.map((task) => strategyRow(task, model));
+  const [company, setCompany] = useState('all');
+  const goals = useMemo(() => [
+    ...data.projects
+      .filter((project) => hasTag(project, 'цель'))
+      .map((project) => buildGoal(project, data.tasks.filter((task) => task.projectId === project.id))),
+    ...buildUnlinkedGoals(data)
+  ], [data.projects, data.tasks]);
+  const visibleGoals = company === 'all' ? goals : goals.filter((goal) => goal.companyKey === company);
+  const summary = summarizeGoals(visibleGoals);
+  const goalColumns = [['name', 'Цель'], ['companyLabel', 'Компания'], ['completion', 'Выполнение, %'], ['taskCount', 'Задач'], ['overdueTasks', 'Просрочено'], ['income', 'Доход'], ['profit', 'Прибыль'], ['periodLabel', 'Период'], ['risk', 'Риск']];
 
-  function openStrategyDetail(key, label, rows, description, columns = strategyColumns) {
-    setDetail({ scope: 'strategy', key, label, title: label, description, rows, columns });
+  function openGoals(label, rows, description = 'Детализация стратегических целей по выбранному показателю.') {
+    setDetail({ scope: 'strategy', label, title: label, description, rows, columns: goalColumns });
   }
 
-  if (!project) {
-    return <EmptyState title="Проект стратегии не найден" description={`В Bitrix24 не найден проект с ID ${strategyProjectId}. Укажите корректный ID в настройках и запустите синхронизацию.`} />;
+  if (!goals.length) {
+    return <EmptyState title="Цели не найдены" description="Добавьте проектам Bitrix24 тег «цель», а также тег компании «iqs» или «iqse», затем запустите синхронизацию." />;
   }
 
   return (
     <>
-      <StrategyHero project={project} model={model} />
+      <OverviewHero summary={summary} />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {COMPANY_FILTERS.map(([key, label]) => <button className={`btn ${company === key ? 'btn-primary' : ''}`} key={key} onClick={() => setCompany(key)}>{label}</button>)}
+      </div>
 
       <section className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric title="Направлений" value={model.directions.length} onClick={() => openStrategyDetail('directions', 'Направления стратегии', drawerRows.filter((row) => row.level === 'Направление'), 'Ключевые направления развития компании.')} />
-        <Metric title="Стратегических задач" value={model.childTasks.length} onClick={() => openStrategyDetail('strategyTasks', 'Стратегические задачи', drawerRows.filter((row) => row.level === 'Стратегическая задача'), 'Инициативы, обеспечивающие реализацию направлений стратегии.')} />
-        <Metric title="Выполнено" value={`${model.completionRate}%`} onClick={() => openStrategyDetail('completedStrategy', 'Выполненные элементы стратегии', drawerRows.filter((row) => row.status === 'closed'), 'Завершенные направления и стратегические задачи.')} />
-        <Metric title="Просрочено" value={model.overdue.length} onClick={() => openStrategyDetail('overdueStrategy', 'Просроченные элементы стратегии', drawerRows.filter((row) => row.overdue), 'Открытые элементы стратегии с истекшим плановым сроком.')} />
-        <Metric title="Участников" value={model.people.size} onClick={() => openStrategyDetail('strategyTeam', 'Команда стратегии', model.teamRows, 'Сотрудники и их роли в реализации стратегии.', [['name', 'Сотрудник'], ['roles', 'Роли'], ['directions', 'Направлений'], ['tasks', 'Стратегических задач']])} />
+        <Metric title="Целей" value={summary.count} onClick={() => openGoals('Все цели', visibleGoals)} />
+        <Metric title="Среднее выполнение" value={`${summary.completion}%`} onClick={() => openGoals('Выполнение целей', visibleGoals)} />
+        <Metric title="Доход по целям" value={<MoneyValue value={summary.income} />} onClick={() => openGoals('Доход по целям', visibleGoals.filter(hasFinance))} />
+        <Metric title="Прибыль по целям" value={<MoneyValue value={summary.profit} />} onClick={() => openGoals('Прибыль по целям', visibleGoals.filter(hasFinance))} />
+        <Metric title="Требуют внимания" value={summary.atRisk} onClick={() => openGoals('Цели, требующие внимания', visibleGoals.filter((goal) => goal.risk !== 'low'))} />
       </section>
 
       <section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <ChartCard title="Прогресс направлений" empty={!model.directionProgress.length}><BarSimple data={model.directionProgress} /></ChartCard>
-        <ChartCard title="Состояние стратегических задач" empty={!strategyTasks.length}><Donut data={model.statusDistribution} /></ChartCard>
-        <ChartCard title="Участие команды в стратегии" empty={!model.teamDistribution.length}><BarSimple data={model.teamDistribution} /></ChartCard>
+        <ChartCard title="Выполнение целей" empty={!visibleGoals.length}><BarSimple data={visibleGoals.map((goal) => ({ name: goal.name, value: goal.completion }))} /></ChartCard>
+        <ChartCard title="Состояние портфеля" empty={!visibleGoals.length}><Donut data={summary.riskDistribution} /></ChartCard>
+        <ChartCard title="Финансовый результат целей" empty={!visibleGoals.some(hasFinance)}><FinanceBars data={visibleGoals.filter(hasFinance)} /></ChartCard>
       </section>
 
-      <section className="panel mb-4 p-4" onClick={() => setSelectedDirectionId('')}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold">Портфель направлений</h2>
-            <p className="mt-1 text-sm text-slate-500">Обзор ключевых направлений, инициатив, сроков и ответственных команд.</p>
-          </div>
-          {selectedDirectionId && <button className="btn" onClick={() => setSelectedDirectionId('')}>Показать все направления</button>}
-        </div>
-        <div className="grid gap-3">
-          {model.directions.map((direction) => (
-            <DirectionCard
-              key={direction.id}
-              direction={direction}
-              selected={selectedDirectionId === direction.id}
-              expanded={Boolean(expanded[direction.id])}
-              onSelect={(event) => {
-                event.stopPropagation();
-                setSelectedDirectionId(selectedDirectionId === direction.id ? '' : direction.id);
-              }}
-              onExpand={() => setExpanded({ ...expanded, [direction.id]: !expanded[direction.id] })}
-            />
-          ))}
-        </div>
-      </section>
-
-      <RelationshipMap directions={model.directions} orphans={model.orphans} allTasks={data.tasks} relationMeta={data.meta.taskRelations} />
-
-      <Gantt projects={[project]} tasks={strategyTasks} selectedProject={project} onClearSelected={() => setSelectedDirectionId('')} hierarchyMode />
-
-      <DataTable
-        title={selectedDirectionId ? 'Данные выбранного направления' : 'Все данные стратегии'}
-        rows={visibleTasks.map((task) => strategyRow(task, model))}
-        columns={[
-          ['level', 'Уровень'], ['direction', 'Направление'], ['title', 'Название'], ['team', 'Команда'],
-          ['status', 'Статус'], ['priority', 'Приоритет'], ['startDatePlan', 'Начало плана'], ['endDatePlan', 'Конец плана'],
-          ['deadline', 'Дедлайн'], ['overdue', 'Просрочка'], ['relationCount', 'Связей'], ['activityAt', 'Активность'], ['url', 'Ссылка']
-        ]}
-      />
+      {['iqs', 'iqse'].map((companyKey) => {
+        const companyGoals = visibleGoals.filter((goal) => goal.companyKey === companyKey);
+        if (!companyGoals.length) return null;
+        return (
+          <section className="panel mb-4 p-4" key={companyKey}>
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-brand-600 dark:bg-blue-950/40"><BriefcaseBusiness size={20} /></span>
+              <div><h2 className="text-lg font-bold">{companyKey === 'iqs' ? 'iQ-Solutions' : 'IQS Engineering'}</h2><p className="text-sm text-slate-500">{companyGoals.length} {goalWord(companyGoals.length)} в портфеле</p></div>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">{companyGoals.map((goal) => <GoalCard goal={goal} key={goal.id} />)}</div>
+          </section>
+        );
+      })}
     </>
   );
 }
 
-function StrategyHero({ project, model }) {
+function OverviewHero({ summary }) {
   return (
     <section className="panel relative mb-4 overflow-hidden border-0 bg-gradient-to-br from-slate-950 via-blue-950 to-brand-700 p-6 text-white">
       <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl" />
       <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-4xl">
-          <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-blue-100"><Target size={15} /> Стратегия компании</span>
-          <h1 className="text-3xl font-black tracking-tight md:text-4xl">{project.name}</h1>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <HeroStat label="Общий прогресс" value={`${model.completionRate}%`} />
-          <HeroStat label="Открыто" value={model.open.length} />
-          <HeroStat label="В риске" value={model.atRisk.length} />
-          <HeroStat label="Ближайший срок" value={nearestDeadline(model.open)} />
-        </div>
+        <div><span className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-blue-100"><Target size={15} /> Стратегия компании</span><h1 className="text-3xl font-black tracking-tight md:text-4xl">Портфель стратегических целей</h1><p className="mt-2 max-w-2xl text-sm text-blue-100">Сводный взгляд на выполнение, сроки, риски и финансовый результат целей группы компаний.</p></div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3"><HeroStat label="Общий прогресс" value={`${summary.completion}%`} /><HeroStat label="В срок" value={summary.onTrack} /><HeroStat label="В зоне риска" value={summary.atRisk} /></div>
       </div>
     </section>
   );
@@ -116,385 +83,114 @@ function HeroStat({ label, value }) {
   return <div className="min-w-32 rounded-xl border border-white/10 bg-white/10 p-3 backdrop-blur"><span className="block text-xs text-blue-100">{label}</span><strong className="mt-1 block text-xl">{value}</strong></div>;
 }
 
-function DirectionCard({ direction, selected, expanded, onSelect, onExpand }) {
+function GoalCard({ goal }) {
+  const risk = riskMeta(goal.risk);
   return (
-    <article className={`rounded-xl border p-4 transition ${selected ? 'border-brand-500 bg-blue-50 dark:bg-blue-950/20' : 'border-slate-200 dark:border-slate-800'}`}>
-      <div className="flex items-stretch gap-3">
-        <button className="flex shrink-0 items-center self-stretch text-slate-500" onClick={(event) => { event.stopPropagation(); onExpand(); }} title={expanded ? 'Свернуть' : 'Развернуть'}>{expanded ? <ChevronDown size={19} /> : <ChevronRight size={19} />}</button>
-        <button className="min-w-0 flex-1 text-left" onClick={onSelect}>
-          <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-bold">{direction.title}</h3><span className={statusPill(direction.status)}>{statusText(direction.status)}</span></div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className="block h-full rounded-full bg-brand-500" style={{ width: `${direction.progress}%` }} /></div>
-          <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1"><CheckCircle2 size={14} /> {direction.closedChildren}/{direction.children.length} выполнено</span>
-            <span className="inline-flex items-center gap-1"><AlertTriangle size={14} /> {direction.overdueChildren} просрочено</span>
-            <span className="inline-flex items-center gap-1"><Clock size={14} /> {formatPlanPeriod(direction)}</span>
-            <span className="inline-flex items-center gap-1"><Users size={14} /> {teamSummary(direction)}</span>
-          </div>
-        </button>
+    <Link className="rounded-xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-brand-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900" to={`/strategy/${encodeURIComponent(goal.id)}`}>
+      <div className="flex items-start justify-between gap-3"><div><span className="text-xs font-bold uppercase tracking-wider text-brand-600">{goal.companyLabel}</span><h3 className="mt-1 text-lg font-bold">{goal.name}</h3></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${risk.className}`}>{risk.label}</span></div>
+      <div className="mt-5 flex items-end justify-between gap-4"><div><span className="text-sm text-slate-500">Выполнение цели</span><strong className="mt-1 block text-3xl">{goal.completion}%</strong></div><span className="text-sm text-slate-500">{goal.closedTasks} из {goal.taskCount} задач</span></div>
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className={`block h-full rounded-full ${risk.bar}`} style={{ width: `${goal.completion}%` }} /></div>
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <CardStat label="Доход" value={<MoneyValue value={goal.income || 0} />} />
+        <CardStat icon={<CheckCircle2 size={15} />} label="Прибыль" value={<MoneyValue value={goal.profit || 0} />} />
+        <CardStat icon={<Calendar size={15} />} label="Период" value={goal.periodLabel} />
+        <CardStat icon={<AlertTriangle size={15} />} label="Просрочено" value={goal.overdueTasks} />
       </div>
-      {expanded && (
-        <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
-          {direction.children.length ? direction.children.map((task) => (
-            <a className="rounded-lg bg-slate-50 p-3 text-sm transition hover:bg-blue-50 dark:bg-slate-800/60 dark:hover:bg-slate-800" href={task.url || undefined} target={task.url ? '_blank' : undefined} rel="noreferrer" key={task.id} onClick={(event) => event.stopPropagation()}>
-              <div className="flex items-start justify-between gap-3"><strong className="line-clamp-2">{task.title}</strong><span className={statusPill(task.status)}>{statusText(task.status)}</span></div>
-              <div className="mt-2 text-xs text-slate-500">{teamSummary(task)} · {formatPlanPeriod(task)}</div>
-            </a>
-          )) : <p className="text-sm text-amber-600">В направлении пока нет стратегических задач.</p>}
-        </div>
-      )}
-    </article>
+      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-sm dark:border-slate-800"><span className="text-slate-500">{goal.responsible}</span><span className="inline-flex items-center gap-1 font-semibold text-brand-600">Открыть цель <ArrowRight size={16} /></span></div>
+    </Link>
   );
 }
 
-function RelationshipMap({ directions, orphans, allTasks, relationMeta }) {
-  const [selectedTaskId, setSelectedTaskId] = useState('');
-  const [showConnections, setShowConnections] = useState(true);
-  const [layout, setLayout] = useState({ width: 0, height: 0, paths: [] });
-  const boardRef = useRef(null);
-  const cardRefs = useRef(new Map());
-  const strategyTasks = directions.flatMap((direction) => [direction, ...direction.children]);
-  const strategyTaskIds = new Set(strategyTasks.map((task) => task.id));
-  const allTaskById = new Map(allTasks.map((task) => [task.id, task]));
-  const relatedEdges = buildRelatedEdges(strategyTasks, allTaskById);
-  const boardEdges = relatedEdges.filter((edge) => strategyTaskIds.has(edge.from.id) && strategyTaskIds.has(edge.to.id));
-  const linkedTaskIds = new Set(relatedEdges.flatMap((edge) => [edge.from.id, edge.to.id]));
-  const selectedLinkedIds = new Set(relatedEdges.filter((edge) => edge.from.id === selectedTaskId || edge.to.id === selectedTaskId).flatMap((edge) => [edge.from.id, edge.to.id]));
+function CardStat({ icon, label, value }) {
+  return <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60"><span className="flex items-center gap-1 text-xs text-slate-500">{icon}{label}</span><strong className="mt-1 block truncate text-sm">{value}</strong></div>;
+}
 
-  useEffect(() => {
-    const update = () => setLayout(buildArrowLayout(boardRef.current, boardEdges, cardRefs.current));
-    update();
-    const observer = new ResizeObserver(update);
-    if (boardRef.current) observer.observe(boardRef.current);
-    cardRefs.current.forEach((node) => observer.observe(node));
-    window.addEventListener('resize', update);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', update);
+function buildGoal(project, tasks) {
+  const closedTasks = tasks.filter((task) => task.status === 'closed').length;
+  const overdueTasks = tasks.filter((task) => task.overdue).length;
+  const completion = Math.round((closedTasks / Math.max(tasks.length, 1)) * 100);
+  const taskStarts = tasks.map((task) => task.startDatePlan || task.createdAt).filter(Boolean).map((value) => new Date(value));
+  const taskEnds = tasks.map((task) => task.endDatePlan || task.deadline || task.closedAt).filter(Boolean).map((value) => new Date(value));
+  const start = project.startDate ? new Date(project.startDate) : validExtreme(taskStarts, Math.min);
+  const deadline = project.endDate ? new Date(project.endDate) : validExtreme(taskEnds, Math.max);
+  const deadlinePassed = deadline && deadline.getTime() < Date.now() && completion < 100;
+  const risk = overdueTasks > 0 || deadlinePassed ? 'high' : (project.progress || 0) > completion + 10 ? 'medium' : 'low';
+  const companyKey = hasTag(project, 'iqse') ? 'iqse' : 'iqs';
+  return { ...project, companyKey, companyLabel: companyKey === 'iqse' ? 'IQS Engineering' : 'iQ-Solutions', taskCount: tasks.length, closedTasks, overdueTasks, completion, risk, periodLabel: formatPeriod(start, deadline) };
+}
+
+function buildUnlinkedGoals(data) {
+  return ['iqs', 'iqse'].map((companyKey) => {
+    const projects = data.projects.filter((project) => !hasTag(project, 'цель') && !project.goalId && hasTag(project, companyKey));
+    if (!projects.length) return null;
+    const projectIds = new Set(projects.map((project) => project.id));
+    const tasks = data.tasks.filter((task) => projectIds.has(task.projectId));
+    const closedTasks = tasks.filter((task) => task.status === 'closed').length;
+    const overdueTasks = tasks.filter((task) => task.overdue).length;
+    const starts = tasks.map((task) => task.startDatePlan || task.createdAt).filter(Boolean).map((value) => new Date(value));
+    const ends = tasks.map((task) => task.endDatePlan || task.deadline || task.closedAt).filter(Boolean).map((value) => new Date(value));
+    return {
+      id: `unlinked-${companyKey}`,
+      name: 'Без цели',
+      companyKey,
+      companyLabel: companyKey === 'iqse' ? 'IQS Engineering' : 'iQ-Solutions',
+      responsible: 'Не назначен',
+      taskCount: tasks.length,
+      closedTasks,
+      overdueTasks,
+      completion: Math.round((closedTasks / Math.max(tasks.length, 1)) * 100),
+      income: projects.reduce((sum, project) => sum + Number(project.income || 0), 0),
+      expense: projects.reduce((sum, project) => sum + Number(project.expense || 0), 0),
+      profit: projects.reduce((sum, project) => sum + Number(project.profit || 0), 0),
+      risk: overdueTasks ? 'high' : 'medium',
+      periodLabel: formatPeriod(validExtreme(starts, Math.min), validExtreme(ends, Math.max)),
+      virtual: true
     };
-  }, [directions, boardEdges.length, showConnections]);
-
-  function setCardRef(taskId, node) {
-    if (node) cardRefs.current.set(taskId, node);
-    else cardRefs.current.delete(taskId);
-  }
-
-  return (
-    <section className="panel mb-4 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold">Стратегическая доска связей</h2>
-          <p className="mt-1 text-sm text-slate-500">Карта показывает, как инициативы внутри направлений усиливают друг друга и где есть рабочие зависимости.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {selectedTaskId && <button className="btn h-9 min-h-9 text-xs" onClick={() => setSelectedTaskId('')}>Показать все связи</button>}
-          <button className="btn h-9 min-h-9 text-xs" onClick={() => setShowConnections((value) => !value)}>
-            {showConnections ? 'Скрыть связи' : 'Показать связи'}
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 dark:bg-blue-950/30 dark:text-blue-200"><GitBranch size={13} /> Направлений: {directions.length}</span>
-        <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Стратегических задач: {directions.reduce((total, direction) => total + direction.children.length, 0)}</span>
-        <span className="rounded-full bg-violet-50 px-3 py-1 font-semibold text-violet-700 dark:bg-violet-950/30 dark:text-violet-200">Связей между задачами: {relatedEdges.length}</span>
-      </div>
-
-      {!relationMeta?.available && (
-        <div className="mt-4 rounded-lg border border-dashed border-violet-300 bg-violet-50 p-3 text-sm text-violet-900 dark:border-violet-900 dark:bg-violet-950/20 dark:text-violet-200">
-          Связи Bitrix24 пока недоступны. Проверьте <strong>BITRIX_WEBHOOK_URL</strong> и повторите синхронизацию.
-          {relationMeta?.error && <span className="mt-1 block text-xs opacity-80">Ошибка Bitrix REST: {relationMeta.error}</span>}
-        </div>
-      )}
-
-      <div className="mt-4 overflow-auto rounded-xl bg-slate-100/70 p-5 dark:bg-slate-950/50" onClick={() => setSelectedTaskId('')}>
-        <div className="relative min-w-max" ref={boardRef}>
-          {showConnections && <ConnectionArrows layout={layout} edges={boardEdges} selectedTaskId={selectedTaskId} />}
-          <div className="relative z-10 flex items-start gap-10">
-            {directions.map((direction) => (
-              <StrategyColumn
-                key={direction.id}
-                direction={direction}
-                linkedTaskIds={linkedTaskIds}
-                selectedLinkedIds={selectedLinkedIds}
-                selectedTaskId={selectedTaskId}
-                setSelectedTaskId={setSelectedTaskId}
-                setCardRef={setCardRef}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-      {relationMeta?.available && !relatedEdges.length && <p className="mt-4 rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500 dark:border-slate-700">Связанные стратегические задачи не найдены.</p>}
-      {orphans.length > 0 && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Найдено стратегических задач без доступного направления: {orphans.length}.</p>}
-    </section>
-  );
-}
-
-function StrategyColumn({ direction, linkedTaskIds, selectedLinkedIds, selectedTaskId, setSelectedTaskId, setCardRef }) {
-  return (
-    <article className="w-[310px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <header className="border-b border-slate-200 bg-gradient-to-br from-blue-50 to-white p-4 dark:border-slate-800 dark:from-blue-950/50 dark:to-slate-900" ref={(node) => setCardRef(direction.id, node)}>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-brand-600">Направление стратегии</span>
-        <h3 className="mt-2 text-sm font-black leading-snug">{direction.title}</h3>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><span className="block h-full rounded-full bg-brand-500" style={{ width: `${direction.progress}%` }} /></div>
-        <div className="mt-2 flex justify-between text-[11px] text-slate-500"><span>{direction.children.length} задач</span><span>{direction.progress}% выполнено</span></div>
-      </header>
-      <div className="grid min-h-36 gap-3 p-3">
-        {direction.children.length ? direction.children.map((task) => {
-          const selected = selectedTaskId === task.id;
-          const muted = selectedTaskId && !selectedLinkedIds.has(task.id);
-          return (
-            <button
-              className={`relative rounded-xl border bg-white p-3 text-left shadow-sm transition dark:bg-slate-800 ${isStrategyOverdue(task) ? 'border-red-300 dark:border-red-900' : linkedTaskIds.has(task.id) ? 'border-violet-300 dark:border-violet-800' : 'border-slate-200 dark:border-slate-700'} ${selected ? 'ring-2 ring-violet-500' : ''} ${muted ? 'opacity-35' : ''}`}
-              key={task.id}
-              ref={(node) => setCardRef(task.id, node)}
-              onClick={(event) => {
-                event.stopPropagation();
-                setSelectedTaskId(selected ? '' : task.id);
-              }}
-              type="button"
-            >
-              {linkedTaskIds.has(task.id) && <span className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-violet-500 text-white"><GitBranch size={11} /></span>}
-              <div className="mb-2 flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Стратегическая задача</span><span className={statusPill(task.status)}>{statusText(task.status)}</span></div>
-              <strong className="block text-xs leading-relaxed">{task.title}</strong>
-              <div className="mt-3 grid gap-1 text-[11px] text-slate-500"><span className="truncate">{teamSummary(task)}</span><span>{formatPlanPeriod(task)}</span></div>
-            </button>
-          );
-        }) : <div className="rounded-lg border border-dashed border-amber-300 p-4 text-center text-xs text-amber-700 dark:border-amber-900 dark:text-amber-300">Стратегические задачи пока не добавлены</div>}
-      </div>
-    </article>
-  );
-}
-
-function ConnectionArrows({ layout, edges, selectedTaskId }) {
-  if (!layout.paths.length) return null;
-  return (
-    <>
-      <svg className="pointer-events-none absolute inset-0 z-0 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
-        {layout.paths.map((path, index) => {
-          const edge = edges[index];
-          const active = !selectedTaskId || edge.from.id === selectedTaskId || edge.to.id === selectedTaskId;
-          return <ConnectionPath path={path} active={active} key={edge.key} />;
-        })}
-      </svg>
-      <svg className="pointer-events-none absolute inset-0 z-20 overflow-visible" width={layout.width} height={layout.height} aria-hidden="true">
-        <defs>
-          <marker id="strategy-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#8b5cf6" /></marker>
-        </defs>
-        {layout.paths.map((path, index) => {
-          const edge = edges[index];
-          const selectedConnection = edge.from.id === selectedTaskId || edge.to.id === selectedTaskId;
-          return (
-            <ConnectionPath
-              path={path}
-              active={!selectedTaskId || selectedConnection}
-              markerEnd="url(#strategy-arrow)"
-              markerOnly={!selectedConnection}
-              key={edge.key}
-            />
-          );
-        })}
-      </svg>
-    </>
-  );
-}
-
-function ConnectionPath({ path, active, markerEnd, markerOnly = false }) {
-  return (
-    <path
-      d={path}
-      fill="none"
-      markerEnd={markerEnd}
-      stroke={markerOnly ? 'transparent' : '#8b5cf6'}
-      strokeDasharray="7 5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={active ? 2.5 : 1.5}
-      opacity={active ? 0.9 : 0.12}
-    />
-  );
-}
-
-function buildArrowLayout(board, edges, refs) {
-  if (!board) return { width: 0, height: 0, paths: [] };
-  const boardRect = board.getBoundingClientRect();
-  const paths = edges.map((edge, index) => {
-    const from = refs.get(edge.from.id)?.getBoundingClientRect();
-    const to = refs.get(edge.to.id)?.getBoundingClientRect();
-    if (!from || !to) return '';
-    const sameColumn = Math.abs(from.left - to.left) < 20;
-    const leftToRight = from.left + from.width / 2 <= to.left + to.width / 2;
-    const x1 = (leftToRight ? from.right : from.left) - boardRect.left;
-    const y1 = from.top + from.height / 2 - boardRect.top;
-    const x2 = (leftToRight ? to.left : to.right) - boardRect.left;
-    const y2 = to.top + to.height / 2 - boardRect.top;
-    if (!sameColumn && Math.abs(y2 - y1) < 2) return `M ${x1} ${y1} H ${x2}`;
-    if (sameColumn) {
-      const startX = from.right - boardRect.left;
-      const endX = to.right - boardRect.left;
-      const side = Math.max(startX, endX) + 28 + (index % 3) * 12;
-      const verticalDirection = y2 >= y1 ? 1 : -1;
-      const radius = Math.min(18, Math.abs(y2 - y1) / 2);
-      return `M ${startX} ${y1} H ${side - radius} Q ${side} ${y1} ${side} ${y1 + verticalDirection * radius} V ${y2 - verticalDirection * radius} Q ${side} ${y2} ${side - radius} ${y2} H ${endX}`;
-    }
-    const horizontalDirection = leftToRight ? 1 : -1;
-    const targetApproachLength = 32;
-    const targetGutterX = x2 - horizontalDirection * targetApproachLength;
-    const verticalDirection = y2 >= y1 ? 1 : -1;
-    const radius = Math.min(14, targetApproachLength / 2, Math.abs(targetGutterX - x1) / 4, Math.abs(y2 - y1) / 2 || 14);
-    return `M ${x1} ${y1} H ${targetGutterX - horizontalDirection * radius} Q ${targetGutterX} ${y1} ${targetGutterX} ${y1 + verticalDirection * radius} V ${y2 - verticalDirection * radius} Q ${targetGutterX} ${y2} ${targetGutterX + horizontalDirection * radius} ${y2} H ${x2}`;
   }).filter(Boolean);
-  return { width: board.scrollWidth, height: board.scrollHeight, paths };
 }
 
-function buildRelatedEdges(tasks, taskById) {
-  const edges = new Map();
-  tasks.forEach((task) => {
-    (task.relatedTaskIds || []).forEach((relatedId) => {
-      const related = taskById.get(String(relatedId)) || { id: String(relatedId), title: `Задача ${relatedId}` };
-      const pair = [task.id, related.id].sort((a, b) => String(a).localeCompare(String(b), 'ru', { numeric: true }));
-      const key = pair.join(':');
-      if (!edges.has(key)) edges.set(key, { key, from: task, to: related });
-    });
-  });
-  return [...edges.values()];
+function validExtreme(dates, operation) {
+  const values = dates.map((date) => date.getTime()).filter(Number.isFinite);
+  return values.length ? new Date(operation(...values)) : null;
 }
 
-function buildStrategyModel(tasks) {
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
-  const childrenByParent = new Map();
-  tasks.forEach((task) => {
-    if (!task.parentId || task.parentId === '0') return;
-    childrenByParent.set(task.parentId, [...(childrenByParent.get(task.parentId) || []), task]);
-  });
-  const directions = tasks.filter((task) => !task.parentId || task.parentId === '0').map((task) => {
-    const children = childrenByParent.get(task.id) || [];
-    const closedChildren = children.filter((child) => child.status === 'closed').length;
-    return { ...task, children, closedChildren, overdueChildren: children.filter(isStrategyOverdue).length, progress: Math.round((closedChildren / Math.max(children.length, 1)) * 100) };
-  });
-  const directionByTask = new Map();
-  directions.forEach((direction) => {
-    directionByTask.set(direction.id, direction);
-    direction.children.forEach((task) => directionByTask.set(task.id, direction));
-  });
-  const closed = tasks.filter((task) => task.status === 'closed');
-  const open = tasks.filter((task) => task.status !== 'closed');
-  const overdue = open.filter(isStrategyOverdue);
-  const teamRows = buildTeamRows(tasks);
+function formatPeriod(start, end) {
+  const format = (date) => date?.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' });
+  if (start && end) return `${format(start)} - ${format(end)}`;
+  return format(end || start) || 'Не указан';
+}
+
+function summarizeGoals(goals) {
+  const totalTasks = goals.reduce((sum, goal) => sum + goal.taskCount, 0);
+  const closedTasks = goals.reduce((sum, goal) => sum + goal.closedTasks, 0);
+  const riskCount = (risk) => goals.filter((goal) => goal.risk === risk).length;
   return {
-    directions,
-    childTasks: tasks.filter((task) => task.parentId && task.parentId !== '0'),
-    emptyDirections: directions.filter((direction) => !direction.children.length),
-    orphans: tasks.filter((task) => task.parentId && task.parentId !== '0' && !taskById.has(task.parentId)),
-    open, overdue, atRisk: open.filter((task) => isStrategyOverdue(task) || daysUntil(strategyEnd(task)) <= 7),
-    people: new Set(teamRows.map((row) => row.name)),
-    teamRows,
-    completionRate: Math.round((closed.length / Math.max(tasks.length, 1)) * 100),
-    childrenByParent, directionByTask,
-    directionProgress: directions.map((direction) => ({ name: direction.title, value: direction.progress })),
-    teamDistribution: teamRows.map((row) => ({ name: row.name, value: row.tasks + row.directions })),
-    statusDistribution: [
-      { name: 'Выполнено', value: closed.length },
-      { name: 'В работе', value: tasks.filter((task) => task.status === 'progress').length },
-      { name: 'Открыто', value: tasks.filter((task) => task.status === 'open').length },
-      { name: 'Просрочено', value: overdue.length }
-    ].filter((row) => row.value)
+    count: goals.length,
+    completion: Math.round((closedTasks / Math.max(totalTasks, 1)) * 100),
+    income: goals.reduce((sum, goal) => sum + Number(goal.income || 0), 0),
+    profit: goals.reduce((sum, goal) => sum + Number(goal.profit || 0), 0),
+    onTrack: riskCount('low'),
+    atRisk: riskCount('medium') + riskCount('high'),
+    riskDistribution: [{ name: 'В срок', value: riskCount('low') }, { name: 'Есть отклонения', value: riskCount('medium') }, { name: 'Высокий риск', value: riskCount('high') }].filter((row) => row.value)
   };
 }
 
-function strategyRow(task, model) {
+function hasTag(project, tag) {
+  return (project.tags || []).some((value) => String(value).trim().toLowerCase() === tag);
+}
+
+function hasFinance(goal) {
+  return goal.income !== null || goal.expense !== null || goal.profit !== null;
+}
+
+function riskMeta(risk) {
   return {
-    ...task,
-    overdue: isStrategyOverdue(task),
-    level: task.parentId && task.parentId !== '0' ? 'Стратегическая задача' : 'Направление',
-    direction: model.directionByTask.get(task.id)?.title || task.title,
-    team: teamSummary(task),
-    planPeriod: formatPlanPeriod(task),
-    relationCount: (task.relatedTaskIds?.length || 0) + (model.childrenByParent.get(task.id)?.length || 0)
-  };
+    low: { label: 'В срок', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200', bar: 'bg-emerald-500' },
+    medium: { label: 'Есть отклонения', className: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200', bar: 'bg-amber-500' },
+    high: { label: 'Высокий риск', className: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200', bar: 'bg-red-500' }
+  }[risk];
 }
 
-function buildTeamRows(tasks) {
-  const rows = new Map();
-  tasks.forEach((task) => {
-    teamMembers(task).forEach((member) => {
-      const current = rows.get(member.name) || { name: member.name, roleSet: new Set(), directions: 0, tasks: 0 };
-      current.roleSet.add(member.role);
-      if (task.parentId && task.parentId !== '0') current.tasks += 1;
-      else current.directions += 1;
-      rows.set(member.name, current);
-    });
-  });
-  return [...rows.values()].map(({ roleSet, ...row }) => ({
-    ...row,
-    roles: [...roleSet].join(', ')
-  })).sort((a, b) => (b.tasks + b.directions) - (a.tasks + a.directions));
-}
-
-function teamMembers(task) {
-  const members = [];
-  if (task.responsible) members.push({ name: task.responsible, role: 'Ответственный' });
-  (task.accomplices || []).forEach((name) => members.push({ name, role: 'Соисполнитель' }));
-  (task.auditors || []).forEach((name) => members.push({ name, role: 'Наблюдатель' }));
-  const seen = new Set();
-  return members.filter((member) => {
-    const key = `${member.name}:${member.role}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function teamSummary(task) {
-  const members = teamMembers(task);
-  if (!members.length) return 'Команда не указана';
-  const primary = members.find((member) => member.role === 'Ответственный') || members[0];
-  const extra = members.length > 1 ? ` +${members.length - 1}` : '';
-  return `${primary.role}: ${primary.name}${extra}`;
-}
-
-function nearestDeadline(tasks) {
-  const days = tasks.map((task) => daysUntil(strategyEnd(task))).filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b)[0];
-  return Number.isFinite(days) ? `${days} дн.` : '-';
-}
-
-function strategyStart(task) {
-  return task.startDatePlan || task.createdAt || null;
-}
-
-function strategyEnd(task) {
-  return task.endDatePlan || task.deadline || null;
-}
-
-function isStrategyOverdue(task) {
-  const end = strategyEnd(task);
-  return Boolean(end && task.status !== 'closed' && new Date(end).getTime() < Date.now());
-}
-
-function formatPlanPeriod(task) {
-  const start = strategyStart(task);
-  const end = strategyEnd(task);
-  if (start && end) return `${formatDate(start)} - ${formatDate(end)}`;
-  return formatDate(end || start);
-}
-
-function daysUntil(value) {
-  if (!value) return Infinity;
-  return Math.ceil((new Date(value).getTime() - Date.now()) / 86400000);
-}
-
-function formatDate(value) {
-  return value ? new Date(value).toLocaleDateString('ru-RU') : 'без срока';
-}
-
-function statusText(status) {
-  return { open: 'Открыто', progress: 'В работе', closed: 'Выполнено' }[status] || status;
-}
-
-function statusPill(status) {
-  const tone = {
-    open: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200',
-    progress: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200',
-    closed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'
-  }[status] || 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
-  return `shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${tone}`;
+function goalWord(count) {
+  return count === 1 ? 'цель' : count > 1 && count < 5 ? 'цели' : 'целей';
 }

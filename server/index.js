@@ -28,7 +28,6 @@ const state = {
   settings: {
     defaultPeriod: '30d',
     useDemoComplements: false,
-    strategyProjectId: process.env.STRATEGY_PROJECT_ID || '38',
     financeMapping: {
       projectLinkField: 'UF_CRM_PROJECT_ID',
       incomeField: 'opportunity',
@@ -117,8 +116,17 @@ async function bitrixWebhookFetch(method, params = {}, apiV3 = false) {
   return payload.result;
 }
 
-async function fetchTaskRelations(tasks, strategyProjectId) {
-  const strategyTasks = (tasks || []).filter((task) => String(task.GROUP_ID ?? task.groupId ?? '') === String(strategyProjectId || ''));
+function workgroupTags(group) {
+  const value = group?.TAGS ?? group?.tags ?? group?.KEYWORDS ?? group?.keywords ?? [];
+  const values = Array.isArray(value) ? value : typeof value === 'object' ? Object.values(value) : String(value).split(',');
+  return values.map((item) => String(item?.name ?? item?.NAME ?? item?.value ?? item?.VALUE ?? item).trim().toLowerCase()).filter(Boolean);
+}
+
+async function fetchTaskRelations(tasks, workgroups) {
+  const goalProjectIds = new Set((workgroups || [])
+    .filter((group) => workgroupTags(group).includes('цель'))
+    .map((group) => String(group.ID ?? group.id ?? '')));
+  const strategyTasks = (tasks || []).filter((task) => goalProjectIds.has(String(task.GROUP_ID ?? task.groupId ?? '')));
   if (!BITRIX_WEBHOOK_URL) return { available: false, source: 'unavailable', relations: {}, error: null };
 
   try {
@@ -221,7 +229,7 @@ async function syncFromBitrix() {
       errors
     };
 
-    raw.taskRelations = await fetchTaskRelations(raw.tasks, state.settings.strategyProjectId);
+    raw.taskRelations = await fetchTaskRelations(raw.tasks, raw.workgroups);
     const data = normalizeBitrixData(raw, state.settings);
     state.data = data;
     state.lastSyncAt = new Date().toISOString();

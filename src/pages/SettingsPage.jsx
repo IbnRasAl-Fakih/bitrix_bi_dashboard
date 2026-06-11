@@ -18,7 +18,6 @@ const defaultMapping = {
 export default function SettingsPage({ status, syncNow, data }) {
   const [period, setPeriod] = useState(status.settings?.defaultPeriod || '90d');
   const [useDemoComplements, setUseDemoComplements] = useState(Boolean(status.settings?.useDemoComplements));
-  const [strategyProjectId, setStrategyProjectId] = useState(status.settings?.strategyProjectId || data.meta.strategyProjectId || '38');
   const [mapping, setMapping] = useState({ ...defaultMapping, ...(status.settings?.financeMapping || {}) });
   const [check, setCheck] = useState(null);
 
@@ -31,7 +30,7 @@ export default function SettingsPage({ status, syncNow, data }) {
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, strategyProjectId, financeMapping: mapping })
+      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, financeMapping: mapping })
     });
     await syncNow();
   }
@@ -83,7 +82,6 @@ export default function SettingsPage({ status, syncNow, data }) {
           </div>
           <div>
             <h2 className="mb-4 text-lg font-bold">Маппинг финансов</h2>
-            <SettingsInput label="ID проекта стратегии" value={strategyProjectId} onChange={setStrategyProjectId} />
             <label className="mb-3 grid gap-1 text-sm text-slate-500">
               Период по умолчанию
               <Dropdown value={period} onChange={setPeriod} options={[['30d', '30 дней'], ['90d', '90 дней'], ['year', 'Год']]} placeholder="Выберите период" className="w-fit" searchable={false} />
