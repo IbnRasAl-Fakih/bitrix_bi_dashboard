@@ -6,26 +6,25 @@ import { riskLabel } from '../utils/format.js';
 const MS_DAY = 24 * 60 * 60 * 1000;
 
 export function ProjectCard({ project, selected = false, onClick }) {
-  const tone = {
-    low: 'border-l-emerald-500',
-    medium: 'border-l-amber-500',
-    high: 'border-l-red-500'
-  }[project.risk] || 'border-l-slate-300';
+  const type = projectTypeMeta(project);
   const datedProject = normalizeProjectDates(project, 0);
   const progress = timeProgress(datedProject.start, datedProject.end);
 
   return (
     <button
-      className={`panel block border-l-4 p-4 text-left transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${tone} ${selected ? 'ring-2 ring-brand-500' : ''}`}
+      className={`panel block border-l-4 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 ${type.border} ${type.background} ${selected ? 'ring-2 ring-brand-500' : ''}`}
       type="button"
       onClick={onClick}
     >
       <div>
-        <h3 className="mb-1 text-base font-bold">{project.name}</h3>
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <h3 className="text-base font-bold">{project.name}</h3>
+          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${type.badge}`}>{type.label}</span>
+        </div>
         <span className="text-sm text-slate-500">{project.responsible || 'Ответственный не указан'}</span>
       </div>
       <div className="my-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <span className="block h-full rounded-full bg-brand-500" style={{ width: `${progress}%` }} />
+        <span className={`block h-full rounded-full ${type.progress}`} style={{ width: `${progress}%` }} />
       </div>
       <div className="flex justify-between gap-2 text-xs text-slate-500">
         <span>{progress}% по сроку</span>
@@ -34,6 +33,39 @@ export function ProjectCard({ project, selected = false, onClick }) {
       </div>
     </button>
   );
+}
+
+export function projectTypeMeta(project) {
+  const tags = (project.tags || []).map((tag) => String(tag).trim().toLowerCase());
+  const systemNames = ['больничный', 'отпуск', 'отсутствия', 'административные задачи'];
+  if (tags.includes('системный') || systemNames.some((name) => String(project.name || '').toLowerCase().includes(name))) {
+    return {
+      key: 'system',
+      label: 'Системный',
+      border: 'border-l-slate-500 hover:border-slate-500',
+      background: 'bg-slate-50/70 dark:bg-slate-900',
+      badge: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+      progress: 'bg-slate-500'
+    };
+  }
+  if (tags.includes('цель')) {
+    return {
+      key: 'goal',
+      label: 'Цель',
+      border: 'border-l-violet-500 hover:border-violet-500',
+      background: 'bg-violet-50/40 dark:bg-violet-950/10',
+      badge: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-200',
+      progress: 'bg-violet-500'
+    };
+  }
+  return {
+    key: 'project',
+    label: 'Проект',
+    border: 'border-l-blue-500 hover:border-blue-500',
+    background: 'bg-blue-50/30 dark:bg-blue-950/10',
+    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-200',
+    progress: 'bg-blue-500'
+  };
 }
 
 export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, onClearSelected, hierarchyMode = false }) {

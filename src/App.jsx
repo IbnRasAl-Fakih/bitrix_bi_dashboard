@@ -107,7 +107,7 @@ export default function App() {
             <Route path="/time" element={<TimePage data={filtered} />} />
             <Route path="/strategy" element={<StrategyPage data={data} setDetail={setDetail} />} />
             <Route path="/strategy/:projectId" element={<StrategyDetailPage data={data} setDetail={setDetail} />} />
-            <Route path="/projects" element={<ProjectsPage data={filtered} />} />
+            <Route path="/projects" element={<ProjectsPage data={data} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
             <Route path="/employees" element={<EmployeesPage data={filtered} />} />
