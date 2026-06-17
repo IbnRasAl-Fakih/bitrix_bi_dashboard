@@ -44,7 +44,7 @@ export default function Dropdown({
   }
 
   return (
-    <div className={`relative ${className}`} ref={ref}>
+    <div className={`relative ${open ? 'z-[120]' : 'z-0'} ${className}`} ref={ref}>
       <button
         type="button"
         className={`flex h-10 min-w-36 items-center gap-2 rounded-lg border px-3 text-sm transition ${
@@ -62,7 +62,7 @@ export default function Dropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-12 z-40 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900">
+        <div className="absolute left-0 top-12 z-[120] w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900">
           {searchable && options.length > 6 && (
             <label className="m-2 flex h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-slate-400 dark:bg-slate-800">
               <Search size={15} />

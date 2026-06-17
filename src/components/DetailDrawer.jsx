@@ -6,7 +6,6 @@ const projectColumns = [
   ['responsible', 'Ответственный'],
   ['status', 'Статус'],
   ['taskCount', 'Задач'],
-  ['closedTasks', 'Закрыто'],
   ['overdueTasks', 'Просрочено'],
   ['plannedHours', 'План'],
   ['actualHours', 'Факт'],
@@ -31,7 +30,6 @@ const userColumns = [
   ['department', 'Отдел'],
   ['projects', 'Проектов'],
   ['tasks', 'Задач'],
-  ['closedTasks', 'Закрыто задач'],
   ['overdueTasks', 'Просрочено'],
   ['load', 'Загрузка, %'],
   ['efficiency', 'Эффективность']
@@ -43,7 +41,6 @@ const assignmentColumns = [
   ['department', 'Отдел'],
   ['plannedHours', 'План'],
   ['actualHours', 'Факт'],
-  ['closedHours', 'Закрыто'],
   ['deviation', 'Отклонение'],
   ['load', 'Загрузка, %']
 ];
@@ -139,8 +136,8 @@ function getDetailConfig(detail, data) {
 
   if (key === 'closedTasks') {
     return {
-      title: 'Закрытые задачи',
-      description: 'Задачи со статусом закрытия.',
+      title: 'Выполненные задачи',
+      description: 'Задачи со статусом выполнения.',
       rows: data.tasks.filter((task) => task.status === 'closed'),
       columns: taskColumns
     };

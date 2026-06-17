@@ -34,7 +34,6 @@ export default function TimePage({ data }) {
         ...row,
         plannedHours: toDays(row.plannedHours),
         actualHours: toDays(row.actualHours),
-        closedHours: toDays(row.closedHours),
         deviation: toDays(row.deviation)
       }))
     };
@@ -70,11 +69,11 @@ export default function TimePage({ data }) {
           <EmployeeBars data={view.hoursByEmployee} />
         </ChartCard>
         <ChartCard title={`Динамика ${unitLabel} по датам`} empty={!view.hoursTrend.length}>
-          <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} second="closed" />
+          <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} />
         </ChartCard>
       </section>
-      <DataTable title={`Рабочее время и закрытое время, ${unitSuffix}`} rows={view.tasks} columns={[
-        ['responsible', 'Сотрудник'], ['project', 'Проект'], ['title', 'Задача'], ['plannedHours', `План, ${unitSuffix}`], ['actualHours', `Факт, ${unitSuffix}`], ['closedHours', `Закрыто, ${unitSuffix}`], ['deviation', `Отклонение, ${unitSuffix}`]
+      <DataTable title={`Рабочее время, ${unitSuffix}`} rows={view.tasks} columns={[
+        ['responsible', 'Сотрудник'], ['project', 'Проект'], ['title', 'Задача'], ['createdAt', 'Создана'], ['plannedHours', `План, ${unitSuffix}`], ['actualHours', `Факт, ${unitSuffix}`], ['deviation', `Отклонение, ${unitSuffix}`]
       ]} />
     </>
   );

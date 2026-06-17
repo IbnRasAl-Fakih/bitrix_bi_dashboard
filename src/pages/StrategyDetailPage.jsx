@@ -121,7 +121,7 @@ function GoalProjectsDashboard({ projects, tasks, setDetail }) {
   const profit = projects.reduce((sum, project) => sum + Number(project.profit || 0), 0);
   const closed = tasks.filter((task) => task.status === 'closed').length;
   const completion = Math.round((closed / Math.max(tasks.length, 1)) * 100);
-  const projectColumns = [['name', 'Проект'], ['responsible', 'Ответственный'], ['taskCount', 'Задач'], ['closedTasks', 'Закрыто'], ['overdueTasks', 'Просрочено'], ['progress', 'Прогресс, %'], ['income', 'Доход'], ['expense', 'Расход'], ['profit', 'Прибыль'], ['risk', 'Риск']];
+  const projectColumns = [['name', 'Проект'], ['responsible', 'Ответственный'], ['taskCount', 'Задач'], ['overdueTasks', 'Просрочено'], ['progress', 'Прогресс, %'], ['income', 'Доход'], ['expense', 'Расход'], ['profit', 'Прибыль'], ['risk', 'Риск']];
   const openProjects = (label, rows = projects) => setDetail({ scope: 'strategy', label, title: label, description: 'Проекты, прикрепленные к выбранной стратегической цели.', rows, columns: projectColumns });
   const openProject = (project) => openProjects(project.name, [project]);
 

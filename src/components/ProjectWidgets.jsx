@@ -224,7 +224,7 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
             searchable={false}
             placeholder="Все статусы"
             options={isTaskMode
-              ? [['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Закрытые']]
+              ? [['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Выполненные']]
               : [['active', 'Активные'], ['completed', 'Завершенные']]}
           />
           <Dropdown
@@ -243,7 +243,7 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
       <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-4">
         <GanttStat label={hierarchyMode ? isHierarchyRoot ? 'Направлений' : 'Задач направления' : isTaskMode ? 'Задач на диаграмме' : 'Проектов'} value={rows.length} />
         <GanttStat label="Видимый период" value={`${formatDate(range.start)} - ${formatDate(range.end)}`} />
-        <GanttStat label={isTaskMode ? 'Закрыто задач' : 'Всего задач'} value={isTaskMode ? rows.filter((row) => row.status === 'closed').length : totalTasks} />
+        <GanttStat label={isTaskMode ? 'Выполнено задач' : 'Всего задач'} value={isTaskMode ? rows.filter((row) => row.status === 'closed').length : totalTasks} />
         <GanttStat label="Просрочено задач" value={overdueTasks} />
       </div>
 
@@ -566,7 +566,7 @@ function formatDate(date) {
 }
 
 function statusLabel(status) {
-  return { open: 'Открыта', progress: 'В работе', closed: 'Закрыта', active: 'Активный', completed: 'Завершен' }[status] || status || 'Без статуса';
+  return { open: 'Открыта', progress: 'В работе', closed: 'Выполнена', active: 'Активный', completed: 'Завершен' }[status] || status || 'Без статуса';
 }
 
 function riskWeight(risk) {

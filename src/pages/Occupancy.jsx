@@ -41,7 +41,6 @@ export default function Occupancy({ data, filters, setFilters }) {
         ...row,
         plannedHours: toDays(row.plannedHours),
         actualHours: toDays(row.actualHours),
-        closedHours: toDays(row.closedHours),
         deviation: toDays(row.deviation)
       }))
     };
@@ -73,12 +72,12 @@ export default function Occupancy({ data, filters, setFilters }) {
         </ChartCard>
         <ChartCard title={`Распределение занятости по проектам в ${unitLabel}`} empty={!view.stackedHours.length}><Stacked data={view.stackedHours} keys={data.users.map((user) => user.name)} /></ChartCard>
         <ChartCard title={`Доля занятости по проектам в ${unitLabel}`} empty={!view.occupancyShare.length}><Donut data={view.occupancyShare} /></ChartCard>
-        <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}><LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} second="closed" /></ChartCard>
+        <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}><LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} /></ChartCard>
       </section>
       <Matrix rows={view.assignments} unit={unit} />
       <DataTable title={`Занятость сотрудников по проектам, ${unitSuffix}`} rows={view.assignments} columns={[
         ['employee', 'Сотрудник'], ['department', 'Отдел'], ['project', 'Проект'], ['plannedHours', `План, ${unitSuffix}`], ['actualHours', `Факт, ${unitSuffix}`],
-        ['closedHours', `Закрыто, ${unitSuffix}`], ['deviation', `Отклонение, ${unitSuffix}`], ['load', 'Загрузка, %'], ['taskCount', 'Задач'], ['openTasks', 'Открыто'], ['closedTasks', 'Закрыто задач'], ['overdueTasks', 'Просрочено']
+        ['deviation', `Отклонение, ${unitSuffix}`], ['load', 'Загрузка, %'], ['taskCount', 'Задач'], ['openTasks', 'Открыто'], ['overdueTasks', 'Просрочено']
       ]} />
     </>
   );

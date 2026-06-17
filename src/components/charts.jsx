@@ -85,7 +85,6 @@ export function EmployeeBars({ data, onClick, showLegend = true }) {
         <Tooltip cursor={tooltipCursor} content={<ChartTooltip />} />
         {showLegend && <Legend wrapperStyle={legendStyle} />}
         <Bar dataKey="hours" name="Факт" fill="#1d70f7" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="closed" name="Закрыто" fill="#14a38b" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -175,7 +174,7 @@ function nameOf(key) {
     expense: 'Расход',
     profit: 'Прибыль',
     hours: 'Часы',
-    closed: 'Закрыто',
+    closed: 'Выполнено',
     created: 'Создано'
   }[key] || key;
 }

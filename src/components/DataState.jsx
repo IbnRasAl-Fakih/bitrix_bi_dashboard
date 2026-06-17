@@ -40,7 +40,7 @@ export function NotificationCenter({ warnings = [] }) {
   if (!warnings.length || dismissedKey === key) return null;
 
   return (
-    <div className="fixed right-5 top-5 z-40">
+    <div className="fixed right-5 top-5 z-[220]">
       {!open ? (
         <button
           className="flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-4 py-2 text-sm font-semibold text-amber-900 shadow-xl shadow-slate-900/10 transition hover:bg-amber-50 dark:border-amber-900 dark:bg-slate-900 dark:text-amber-100"

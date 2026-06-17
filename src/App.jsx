@@ -29,6 +29,8 @@ export default function App() {
   const [detail, setDetail] = useState(null);
   const [filters, setFilters] = useState({
     period: '90d',
+    startDate: '',
+    endDate: '',
     project: '',
     employee: '',
     department: '',
@@ -77,17 +79,20 @@ export default function App() {
     <div className={`grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 ${sidebarCollapsed ? 'lg:grid-cols-[88px_1fr]' : 'lg:grid-cols-[284px_1fr]'}`}>
       <ScrollToTop />
       <NotificationCenter warnings={data.meta?.warnings || []} />
-      <Sidebar collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} />
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+        syncNow={syncNow}
+        syncing={syncing}
+        status={status}
+        theme={theme}
+        setTheme={setTheme}
+      />
       <main className="min-w-0 p-4 md:p-5">
         <Topbar
           filters={filters}
           setFilters={setFilters}
           data={data}
-          status={status}
-          theme={theme}
-          setTheme={setTheme}
-          syncNow={syncNow}
-          syncing={syncing}
         />
         {loading ? <Skeleton /> : status.status === 'error' ? (
           <ErrorState
@@ -107,7 +112,7 @@ export default function App() {
             <Route path="/time" element={<TimePage data={filtered} />} />
             <Route path="/strategy" element={<StrategyPage data={data} setDetail={setDetail} />} />
             <Route path="/strategy/:projectId" element={<StrategyDetailPage data={data} setDetail={setDetail} />} />
-            <Route path="/projects" element={<ProjectsPage data={data} />} />
+            <Route path="/projects" element={<ProjectsPage data={filtered} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
             <Route path="/employees" element={<EmployeesPage data={filtered} />} />

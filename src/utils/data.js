@@ -64,16 +64,30 @@ export function emptyData() {
 
 export function applyFilters(data, filters) {
   const query = filters.query.toLowerCase();
+  const range = resolveDateRange(filters);
   const tasks = data.tasks.filter((task) => {
     return (!filters.project || task.projectId === filters.project)
       && (!filters.employee || task.responsibleId === filters.employee)
       && (!filters.taskStatus || task.status === filters.taskStatus)
+      && matchesTaskRange(task, range)
       && (!query || JSON.stringify(task).toLowerCase().includes(query));
   });
 
   const projectIds = new Set(tasks.map((task) => task.projectId));
   const employeeIds = new Set(tasks.map((task) => task.responsibleId));
-  const projects = data.projects.filter((project) => projectIds.has(project.id) && (!filters.projectStatus || project.status === filters.projectStatus));
+  const financeRecords = (data.financeRecords || []).filter((record) => {
+    return matchesPointDate(record.date, range)
+      && (!query || JSON.stringify(record).toLowerCase().includes(query));
+  });
+  const financeProjectNames = new Set(financeRecords.map((record) => record.projectName));
+  const projects = data.projects.filter((project) => {
+    const selectedByTask = projectIds.has(project.id);
+    const selectedByFinance = financeProjectNames.has(project.name);
+    return (selectedByTask || selectedByFinance || (!tasks.length && !financeRecords.length && matchesProjectRange(project, range)))
+      && (!filters.project || project.id === filters.project)
+      && (!filters.projectStatus || project.status === filters.projectStatus)
+      && (!query || JSON.stringify(project).toLowerCase().includes(query));
+  });
   const users = data.users.filter((user) => employeeIds.has(user.id) && (!filters.department || user.department === filters.department));
   const assignments = data.assignments.filter((row) => {
     return (!filters.project || row.projectId === filters.project)
@@ -81,12 +95,79 @@ export function applyFilters(data, filters) {
       && (!filters.department || row.department === filters.department);
   });
 
-  return recalc({ ...data, tasks, projects, users, assignments });
+  return recalc({ ...data, tasks, projects, users, assignments, financeRecords });
+}
+
+function resolveDateRange(filters) {
+  if (filters.period === 'custom') {
+    return {
+      start: parseDateStart(filters.startDate),
+      end: parseDateEnd(filters.endDate)
+    };
+  }
+
+  const daysByPeriod = { '30d': 30, '90d': 90, '180d': 180, year: 365 };
+  const days = daysByPeriod[filters.period];
+  if (!days) return { start: null, end: null };
+
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days + 1);
+  start.setHours(0, 0, 0, 0);
+  return { start, end };
+}
+
+function parseDateStart(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateEnd(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T23:59:59.999`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function matchesTaskRange(task, range) {
+  if (!range.start && !range.end) return true;
+  return [
+    task.createdAt,
+    task.closedAt,
+    task.activityAt,
+    task.startDatePlan,
+    task.endDatePlan,
+    task.deadline
+  ].some((value) => matchesPointDate(value, range));
+}
+
+function matchesProjectRange(project, range) {
+  if (!range.start && !range.end) return true;
+  return dateIntervalsOverlap(project.startDate, project.endDate, range);
+}
+
+function matchesPointDate(value, range) {
+  if (!range.start && !range.end) return true;
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return (!range.start || date >= range.start) && (!range.end || date <= range.end);
+}
+
+function dateIntervalsOverlap(startValue, endValue, range) {
+  if (!range.start && !range.end) return true;
+  const start = startValue ? new Date(startValue) : null;
+  const end = endValue ? new Date(endValue) : start;
+  if (!start || Number.isNaN(start.getTime())) return false;
+  const normalizedEnd = end && !Number.isNaN(end.getTime()) ? end : start;
+  return (!range.start || normalizedEnd >= range.start) && (!range.end || start <= range.end);
 }
 
 export function recalc(data) {
   return {
     ...data,
+    charts: buildCharts(data),
     kpis: {
       ...data.kpis,
       activeProjects: data.projects.filter((project) => project.status === 'active').length,
@@ -107,6 +188,102 @@ export function recalc(data) {
       teamLoad: Math.round(avg(data.users.map((user) => user.load)))
     }
   };
+}
+
+function buildCharts(data) {
+  const financeRecords = data.financeRecords || [];
+  return {
+    ...data.charts,
+    hoursByEmployee: data.users
+      .filter((user) => user.actualHours || user.closedHours)
+      .map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load })),
+    hoursByProject: data.projects
+      .filter((project) => project.actualHours || project.plannedHours || project.closedHours)
+      .map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours })),
+    occupancyShare: data.projects
+      .filter((project) => project.actualHours > 0)
+      .map((project) => ({ name: project.name, value: project.actualHours })),
+    financeByProject: data.projects
+      .filter((project) => project.income !== null || project.expense !== null || project.profit !== null)
+      .map((project) => ({ name: project.name, income: project.income || 0, expense: project.expense || 0, profit: project.profit || 0 })),
+    financeTrend: buildFinanceTrend(financeRecords),
+    taskTrend: buildTaskTrend(data.tasks),
+    hoursTrend: buildHoursTrend(data.tasks),
+    stackedHours: data.projects.map((project) => {
+      const row = { name: project.name };
+      data.assignments
+        .filter((assignment) => assignment.project === project.name && assignment.actualHours > 0)
+        .forEach((assignment) => { row[assignment.employee] = assignment.actualHours; });
+      return row;
+    }).filter((row) => Object.keys(row).length > 1),
+    expenseStructure: buildExpenseStructure(financeRecords)
+  };
+}
+
+function buildFinanceTrend(records) {
+  const grouped = new Map();
+  records.forEach((record) => {
+    if (!record.date) return;
+    const month = monthLabel(record.date);
+    const current = grouped.get(month) || { month, income: 0, expense: 0, profit: 0 };
+    if (record.kind === 'income') current.income += record.amount;
+    if (record.kind === 'expense') current.expense += record.amount;
+    current.profit = current.income - current.expense;
+    grouped.set(month, current);
+  });
+  return [...grouped.values()].map((row) => ({
+    month: row.month,
+    income: sum([row], 'income'),
+    expense: sum([row], 'expense'),
+    profit: sum([row], 'profit')
+  })).slice(-18);
+}
+
+function buildExpenseStructure(records) {
+  const grouped = new Map();
+  records.filter((record) => record.kind === 'expense').forEach((record) => {
+    const key = record.article || record.hierarchy || 'Без статьи';
+    grouped.set(key, (grouped.get(key) || 0) + record.amount);
+  });
+  return [...grouped.entries()]
+    .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 12);
+}
+
+function buildTaskTrend(tasks) {
+  const grouped = new Map();
+  tasks.forEach((task) => {
+    const date = task.closedAt || task.createdAt;
+    if (!date) return;
+    const month = monthLabel(date);
+    const current = grouped.get(month) || { month, closed: 0, created: 0 };
+    if (task.createdAt) current.created += 1;
+    if (task.closedAt) current.closed += 1;
+    grouped.set(month, current);
+  });
+  return [...grouped.values()].slice(-12);
+}
+
+function buildHoursTrend(tasks) {
+  const grouped = new Map();
+  tasks.forEach((task) => {
+    const date = task.closedAt || task.createdAt;
+    if (!date) return;
+    const month = monthLabel(date);
+    const current = grouped.get(month) || { month, hours: 0, closed: 0 };
+    current.hours += task.actualHours || 0;
+    current.closed += task.closedHours || 0;
+    grouped.set(month, current);
+  });
+  return [...grouped.values()]
+    .map((row) => ({ ...row, hours: Math.round(row.hours * 10) / 10, closed: Math.round(row.closed * 10) / 10 }))
+    .filter((row) => row.hours || row.closed)
+    .slice(-12);
+}
+
+function monthLabel(value) {
+  return new Date(value).toLocaleString('ru-RU', { month: 'short', year: '2-digit' });
 }
 
 export function groupCount(rows, key) {
