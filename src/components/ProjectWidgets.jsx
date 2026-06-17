@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, Flag, SlidersHorizontal } from '../icons/index.jsx';
+import ExcelJS from 'exceljs';
+import { Calendar, Download, Flag, SlidersHorizontal } from '../icons/index.jsx';
 import Dropdown from './Dropdown.jsx';
 import { riskLabel } from '../utils/format.js';
 
@@ -389,38 +390,136 @@ export function Gantt({ projects, tasks = [], selectedProject, onSelectProject, 
 
 export function Matrix({ rows, unit = 'hours' }) {
   const employees = [...new Set(rows.map((row) => row.employee))];
-  const projects = [...new Set(rows.map((row) => row.project))].slice(0, 6);
+  const projects = [...new Set(rows.map((row) => row.project))];
   const isDays = unit === 'days';
   const suffix = isDays ? 'дн.' : 'ч';
   const titleUnit = isDays ? 'дни' : 'часы';
   const opacityBase = isDays ? 4.4 : 35;
+  const matrixValues = useMemo(() => {
+    return rows.reduce((acc, row) => {
+      acc.set(`${row.employee}\u0000${row.project}`, row.actualHours || 0);
+      return acc;
+    }, new Map());
+  }, [rows]);
+
+  function getValue(employee, project) {
+    return matrixValues.get(`${employee}\u0000${project}`) || 0;
+  }
+
+  async function exportExcel() {
+    const header = [''].concat(projects);
+    const tableRows = [
+      header,
+      ...employees.map((employee) => [
+        employee,
+        ...projects.map((project) => getValue(employee, project))
+      ])
+    ];
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Матрица', {
+      views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }]
+    });
+    worksheet.addRows(tableRows);
+    worksheet.columns = header.map((cell, index) => ({
+      width: index === 0 ? 24 : Math.min(42, Math.max(16, String(cell).length + 3))
+    }));
+
+    const border = {
+      top: { style: 'thin', color: { argb: 'CBD5E1' } },
+      left: { style: 'thin', color: { argb: 'CBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'CBD5E1' } },
+      right: { style: 'thin', color: { argb: 'CBD5E1' } }
+    };
+
+    worksheet.eachRow((row, rowNumber) => {
+      row.height = rowNumber === 1 ? 24 : 22;
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        cell.border = border;
+        cell.alignment = {
+          horizontal: rowNumber === 1 || columnNumber === 1 ? 'left' : 'right',
+          vertical: 'middle',
+          wrapText: true
+        };
+
+        if (rowNumber === 1) {
+          cell.font = { bold: true, color: { argb: 'FFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1D4ED8' } };
+          return;
+        }
+
+        if (columnNumber === 1) {
+          cell.font = { bold: true, color: { argb: '334155' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E2E8F0' } };
+          return;
+        }
+
+        const value = Number(cell.value || 0);
+        cell.numFmt = '0.0';
+        cell.font = { color: { argb: value ? '0F172A' : '94A3B8' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: value ? valueColor(value, opacityBase) : 'F8FAFC' }
+        };
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `matrix-${unit}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <section className="panel mb-4 p-4">
-      <h2 className="mb-4 text-base font-bold">Матрица сотрудники x проекты x {titleUnit}</h2>
-      <div className="grid min-w-[760px] gap-1 overflow-auto" style={{ gridTemplateColumns: `190px repeat(${projects.length}, minmax(100px, 1fr))` }}>
-        <div />
-        {projects.map((project) => <div className="rounded-lg bg-slate-100 p-2 text-xs font-bold text-slate-500 dark:bg-slate-800" key={project}>{project}</div>)}
-        {employees.map((employee) => (
-          <Fragment key={employee}>
-            <div className="rounded-lg bg-slate-100 p-2 text-xs font-bold text-slate-500 dark:bg-slate-800">{employee}</div>
-            {projects.map((project) => {
-              const value = rows.find((row) => row.employee === employee && row.project === project)?.actualHours || 0;
-              return (
-                <div
-                  className="rounded-lg bg-brand-500 p-2 text-center text-xs font-bold text-white"
-                  key={`${employee}-${project}`}
-                  style={{ opacity: Math.max(0.18, Math.min(1, value / opacityBase)) }}
-                >
-                  {value ? `${value} ${suffix}` : '-'}
-                </div>
-              );
-            })}
-          </Fragment>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-bold">Матрица сотрудники x проекты x {titleUnit}</h2>
+        <button className="icon-btn h-9 w-9 min-h-9 min-w-9" title="Скачать Excel" type="button" onClick={exportExcel}>
+          <Download size={16} />
+        </button>
+      </div>
+      <div className="max-h-[65vh] overflow-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="grid min-w-max" style={{ gridTemplateColumns: `190px repeat(${projects.length}, minmax(180px, 1fr))` }}>
+          <div className="sticky left-0 top-0 z-30 h-11 border-b border-r border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900" />
+          {projects.map((project) => (
+            <div className="sticky top-0 z-20 flex h-11 items-center border-b border-r border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300" key={project}>
+              {project}
+            </div>
+          ))}
+          {employees.map((employee) => (
+            <Fragment key={employee}>
+              <div className="sticky left-0 z-10 flex h-10 items-center border-b border-r border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">{employee}</div>
+              {projects.map((project) => {
+                const value = getValue(employee, project);
+                return (
+                  <div
+                    className="flex h-10 items-center justify-center border-b border-r border-white bg-brand-500 px-3 text-center text-xs font-bold text-white dark:border-slate-900"
+                    key={`${employee}-${project}`}
+                    style={{ opacity: Math.max(0.18, Math.min(1, value / opacityBase)) }}
+                  >
+                    {value ? `${value} ${suffix}` : '-'}
+                  </div>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
       </div>
     </section>
   );
+}
+
+function valueColor(value, opacityBase) {
+  const intensity = Math.max(0.18, Math.min(1, value / opacityBase));
+  const from = [219, 234, 254];
+  const to = [37, 99, 235];
+  return from
+    .map((channel, index) => Math.round(channel + (to[index] - channel) * intensity).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
 }
 
 function TodayLine({ position }) {

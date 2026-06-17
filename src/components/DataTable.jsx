@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import ExcelJS from 'exceljs';
 import { Download, SlidersHorizontal, X } from '../icons/index.jsx';
 import { SearchField } from './FormControls.jsx';
-import { csvCell, formatCell } from '../utils/format.js';
+import { formatCell, riskLabel } from '../utils/format.js';
+
+const NUMERIC_KEYS = new Set([
+  'income', 'expense', 'profit', 'plannedHours', 'actualHours', 'deviation', 'load',
+  'progress', 'margin', 'efficiency', 'completionRate', 'avgLoad', 'teamLoad',
+  'taskCount', 'openTasks', 'closedTasks', 'overdueTasks', 'employees', 'tasks'
+]);
+const DATE_KEYS = new Set(['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt']);
 
 export default function DataTable({ title, rows, columns }) {
   const [sort, setSort] = useState({ key: columns[0][0], dir: 'asc' });
@@ -79,15 +87,65 @@ export default function DataTable({ title, rows, columns }) {
     if (page > maxPage) setPage(maxPage);
   }, [maxPage, page]);
 
-  function exportCsv() {
-    const csv = [
-      activeColumns.map((column) => column[1]).join(';'),
-      ...visible.map((row) => activeColumns.map(([key]) => csvCell(key, row[key])).join(';'))
-    ].join('\n');
-    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+  async function exportExcel() {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Данные', {
+      views: [{ state: 'frozen', ySplit: 1 }]
+    });
+    worksheet.addRow(activeColumns.map((column) => column[1]));
+    visible.forEach((row) => {
+      worksheet.addRow(activeColumns.map(([key]) => excelCellValue(key, row[key])));
+    });
+
+    worksheet.columns = activeColumns.map(([key, label]) => ({
+      width: columnWidth(key, label, visible)
+    }));
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: Math.max(1, visible.length + 1), column: activeColumns.length }
+    };
+
+    const border = {
+      top: { style: 'thin', color: { argb: 'CBD5E1' } },
+      left: { style: 'thin', color: { argb: 'CBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'CBD5E1' } },
+      right: { style: 'thin', color: { argb: 'CBD5E1' } }
+    };
+
+    worksheet.eachRow((row, rowNumber) => {
+      row.height = rowNumber === 1 ? 24 : 22;
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        const key = activeColumns[columnNumber - 1]?.[0];
+        cell.border = border;
+        cell.alignment = {
+          horizontal: NUMERIC_KEYS.has(key) ? 'right' : 'left',
+          vertical: 'middle',
+          wrapText: true
+        };
+
+        if (rowNumber === 1) {
+          cell.font = { bold: true, color: { argb: 'FFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1D4ED8' } };
+          return;
+        }
+
+        cell.font = { color: { argb: '0F172A' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: rowNumber % 2 === 0 ? 'F8FAFC' : 'FFFFFF' }
+        };
+
+        if (NUMERIC_KEYS.has(key)) cell.numFmt = '#,##0.00';
+        if (DATE_KEYS.has(key) || key === 'createdAt') cell.numFmt = key === 'createdAt' ? 'dd.mm.yyyy hh:mm' : 'dd.mm.yyyy';
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${title}.csv`;
+    anchor.download = `${safeFilename(title)}.xlsx`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -154,7 +212,7 @@ export default function DataTable({ title, rows, columns }) {
             </div>
           )}
         </div>
-        <button className="icon-btn" title="Экспорт CSV" onClick={exportCsv}><Download size={18} /></button>
+        <button className="icon-btn" title="Экспорт Excel" onClick={exportExcel}><Download size={18} /></button>
       </div>
       <div className="overflow-auto">
         <table className="w-full min-w-[940px] border-collapse">
@@ -188,4 +246,45 @@ export default function DataTable({ title, rows, columns }) {
       </div>
     </section>
   );
+}
+
+function excelCellValue(key, value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (NUMERIC_KEYS.has(key)) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : value;
+  }
+  if (key === 'createdAt' || DATE_KEYS.has(key)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date;
+  }
+  if (key === 'status') {
+    return {
+      open: 'Открыта',
+      progress: 'В работе',
+      closed: 'Выполнена',
+      active: 'Активный',
+      completed: 'Завершен'
+    }[value] || value;
+  }
+  if (key === 'risk') return riskLabel(value);
+  if (key === 'overdue') return value ? 'Да' : 'Нет';
+  return String(value);
+}
+
+function columnWidth(key, label, rows) {
+  const longest = rows.reduce((max, row) => {
+    const value = excelCellValue(key, row[key]);
+    const text = value instanceof Date ? '00.00.0000 00:00' : String(value ?? '');
+    return Math.max(max, text.length);
+  }, String(label).length);
+  return Math.min(48, Math.max(12, longest + 3));
+}
+
+function safeFilename(value) {
+  return String(value || 'table')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || 'table';
 }

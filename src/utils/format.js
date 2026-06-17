@@ -68,37 +68,3 @@ export function sourceLabel(source) {
   return source === 'bitrix' ? 'реальные данные Bitrix24' : 'нет подключенных данных';
 }
 
-export function csvCell(key, value) {
-  return `"${formatCsvValue(key, value).replace(/"/g, '""')}"`;
-}
-
-function formatCsvValue(key, value) {
-  if (value === null || value === undefined || value === '') return '';
-  if (['income', 'expense', 'profit', 'plannedHours', 'actualHours', 'deviation', 'load', 'progress', 'margin', 'efficiency', 'completionRate', 'avgLoad', 'teamLoad'].includes(key)) {
-    return formatDecimal(value);
-  }
-  if (key === 'createdAt') {
-    return new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-  }
-  if (['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt'].includes(key)) {
-    return new Date(value).toLocaleDateString('ru-RU');
-  }
-  if (key === 'status') {
-    return {
-      open: 'Открыта',
-      progress: 'В работе',
-      closed: 'Выполнена',
-      active: 'Активный',
-      completed: 'Завершен'
-    }[value] || String(value);
-  }
-  if (key === 'risk') return riskLabel(value);
-  if (key === 'overdue') return value ? 'Да' : 'Нет';
-  return String(value);
-}
-
-function formatDecimal(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return String(value);
-  return number.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-}
