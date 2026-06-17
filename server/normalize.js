@@ -28,6 +28,40 @@ function stringTags(value) {
     .filter(Boolean))];
 }
 
+function buildDepartmentMap(departments) {
+  const map = new Map();
+  departments.forEach((department) => {
+    const id = department?.ID ?? department?.id ?? department?.ID_PARENT ?? department?.xmlId;
+    const name = department?.NAME ?? department?.name ?? department?.title ?? department?.TITLE;
+    if (id && name) map.set(String(id), String(name).trim());
+  });
+  return map;
+}
+
+function departmentLabel(user, departmentById) {
+  const direct = user.department || user.DEPARTMENT || user.WORK_DEPARTMENT;
+  const raw = user.UF_DEPARTMENT ?? user.ufDepartment ?? user.departmentId ?? user.departmentID ?? user.departments ?? user.departmentIds;
+  const values = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object'
+      ? Object.values(raw)
+      : raw
+        ? String(raw).split(',')
+        : [];
+
+  const names = values.map((item) => {
+    if (item && typeof item === 'object') {
+      const name = item.NAME ?? item.name ?? item.title ?? item.TITLE;
+      const id = item.ID ?? item.id ?? item.value;
+      return name || departmentById.get(String(id));
+    }
+    return departmentById.get(String(item).trim()) || (String(item).trim() && !/^\d+$/.test(String(item).trim()) ? String(item).trim() : '');
+  }).filter(Boolean);
+
+  if (names.length) return names.at(-1);
+  return direct || 'Не указан';
+}
+
 function taskStatus(task) {
   const status = String(task.STATUS ?? task.status ?? '').toLowerCase();
   if (['5', '6', '7', 'completed', 'closed'].includes(status)) return 'closed';
@@ -55,9 +89,10 @@ function emptyAnalytics(warnings = []) {
         users: false,
         projects: false,
         tasks: false,
-        taskTime: false,
-        financeIncome: false,
-        financeExpense: false
+    taskTime: false,
+    financeIncome: false,
+    financeExpense: false,
+    departments: false
       }
     },
     kpis: emptyKpis(),
@@ -73,11 +108,12 @@ function emptyAnalytics(warnings = []) {
 export function normalizeBitrixData(raw, settings) {
   const warnings = [...(raw.errors || [])];
   const financeSettings = settings.financeMapping || {};
+  const departmentById = buildDepartmentMap(raw.departments || []);
 
   const users = (raw.users || []).map((user, index) => ({
     id: String(user.ID ?? user.id ?? index + 1),
     name: text(user.NAME, user.LAST_NAME) || user.name || `Пользователь ${user.ID ?? user.id ?? index + 1}`,
-    department: Array.isArray(user.UF_DEPARTMENT) ? `Отдел ${user.UF_DEPARTMENT[0]}` : (user.department || 'Не указан'),
+    department: departmentLabel(user, departmentById),
     position: user.WORK_POSITION || user.position || 'Не указана',
     source: 'bitrix'
   }));
@@ -168,6 +204,7 @@ export function normalizeBitrixData(raw, settings) {
   };
   data.meta.availability = {
     users: users.length > 0,
+    departments: departmentById.size > 0,
     projects: projects.length > 0,
     tasks: taskRows.length > 0,
     taskTime: taskRows.some((task) => task.plannedHours > 0 || task.actualHours > 0 || task.closedHours > 0),
@@ -409,6 +446,7 @@ function buildAssignments(users, projects, tasks) {
 function buildCharts(projects, users, assignments, tasks, financeRecords) {
   return {
     hoursByEmployee: users.filter((user) => user.actualHours || user.closedHours).map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load })),
+    hoursByDepartment: buildHoursByDepartment(users),
     hoursByProject: projects.filter((project) => project.actualHours || project.plannedHours || project.closedHours).map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours })),
     occupancyShare: projects.filter((project) => project.actualHours > 0).map((project) => ({ name: project.name, value: project.actualHours })),
     financeByProject: projects.filter((project) => project.income !== null || project.expense !== null || project.profit !== null).map((project) => ({ name: project.name, income: project.income || 0, expense: project.expense || 0, profit: project.profit || 0 })),
@@ -422,6 +460,29 @@ function buildCharts(projects, users, assignments, tasks, financeRecords) {
     }).filter((row) => Object.keys(row).length > 1),
     expenseStructure: buildExpenseStructure(financeRecords)
   };
+}
+
+function buildHoursByDepartment(users) {
+  const grouped = new Map();
+  users.forEach((user) => {
+    const name = user.department || 'Не указан';
+    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0 };
+    current.hours += user.actualHours || 0;
+    current.closed += user.closedHours || 0;
+    current.loadTotal += user.load || 0;
+    current.employees += 1;
+    grouped.set(name, current);
+  });
+  return [...grouped.values()]
+    .map((row) => ({
+      name: row.name,
+      hours: round(row.hours),
+      closed: round(row.closed),
+      load: Math.round(row.loadTotal / Math.max(row.employees, 1)),
+      employees: row.employees
+    }))
+    .filter((row) => row.hours || row.closed || row.employees)
+    .sort((a, b) => b.hours - a.hours);
 }
 
 function buildFinanceTrend(records) {
@@ -506,6 +567,7 @@ function emptyCharts() {
     financeByProject: [],
     taskTrend: [],
     hoursByEmployee: [],
+    hoursByDepartment: [],
     occupancyShare: [],
     stackedHours: [],
     hoursTrend: [],
@@ -650,6 +712,7 @@ function applyDemoComplements(data) {
   }
 
   data.charts.hoursByEmployee = data.users.map((user) => ({ name: user.name, hours: user.actualHours || 0, closed: user.closedHours || 0, load: user.load || 0 })).filter((row) => row.hours || row.closed);
+  data.charts.hoursByDepartment = buildHoursByDepartment(data.users);
   data.charts.hoursByProject = data.projects.map((project) => ({ name: project.name, planned: project.plannedHours || 0, actual: project.actualHours || 0, closed: project.closedHours || 0 })).filter((row) => row.planned || row.actual || row.closed);
   data.charts.occupancyShare = data.projects.map((project) => ({ name: project.name, value: project.actualHours || 0 })).filter((row) => row.value);
   data.charts.financeByProject = data.projects.filter((project) => project.income !== null || project.expense !== null || project.profit !== null).map((project) => ({

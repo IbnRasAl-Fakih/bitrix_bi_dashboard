@@ -15,12 +15,18 @@ export default function TimePage({ data }) {
   const view = useMemo(() => {
     if (!isDays) return {
       hoursByEmployee: data.charts.hoursByEmployee,
+      hoursByDepartment: data.charts.hoursByDepartment || [],
       hoursTrend: data.charts.hoursTrend,
       tasks: data.tasks
     };
 
     return {
       hoursByEmployee: data.charts.hoursByEmployee.map((row) => ({
+        ...row,
+        hours: toDays(row.hours),
+        closed: toDays(row.closed)
+      })),
+      hoursByDepartment: (data.charts.hoursByDepartment || []).map((row) => ({
         ...row,
         hours: toDays(row.hours),
         closed: toDays(row.closed)
@@ -67,6 +73,9 @@ export default function TimePage({ data }) {
       <section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ChartCard title={`Гистограмма ${unitLabel} по сотрудникам`} empty={!view.hoursByEmployee.length}>
           <EmployeeBars data={view.hoursByEmployee} />
+        </ChartCard>
+        <ChartCard title={`Гистограмма ${unitLabel} по отделам`} empty={!view.hoursByDepartment.length}>
+          <EmployeeBars data={view.hoursByDepartment} />
         </ChartCard>
         <ChartCard title={`Динамика ${unitLabel} по датам`} empty={!view.hoursTrend.length}>
           <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} />

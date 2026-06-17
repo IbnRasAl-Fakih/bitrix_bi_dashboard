@@ -15,6 +15,7 @@ export default function Occupancy({ data, filters, setFilters }) {
   const view = useMemo(() => {
     if (!isDays) return {
       hoursByEmployee: data.charts.hoursByEmployee,
+      hoursByDepartment: data.charts.hoursByDepartment || [],
       stackedHours: data.charts.stackedHours,
       occupancyShare: data.charts.occupancyShare,
       hoursTrend: data.charts.hoursTrend,
@@ -23,6 +24,11 @@ export default function Occupancy({ data, filters, setFilters }) {
 
     return {
       hoursByEmployee: data.charts.hoursByEmployee.map((row) => ({
+        ...row,
+        hours: toDays(row.hours),
+        closed: toDays(row.closed)
+      })),
+      hoursByDepartment: (data.charts.hoursByDepartment || []).map((row) => ({
         ...row,
         hours: toDays(row.hours),
         closed: toDays(row.closed)
@@ -70,9 +76,18 @@ export default function Occupancy({ data, filters, setFilters }) {
         <ChartCard title={`Занятость по сотрудникам в ${unitLabel}`} empty={!view.hoursByEmployee.length} emptyText="В задачах нет заполненного времени по сотрудникам.">
           <EmployeeBars data={view.hoursByEmployee} onClick={(row) => setFilters({ ...filters, employee: data.users.find((user) => user.name === row.name)?.id || '' })} />
         </ChartCard>
-        <ChartCard title={`Распределение занятости по проектам в ${unitLabel}`} empty={!view.stackedHours.length}><Stacked data={view.stackedHours} keys={data.users.map((user) => user.name)} /></ChartCard>
-        <ChartCard title={`Доля занятости по проектам в ${unitLabel}`} empty={!view.occupancyShare.length}><Donut data={view.occupancyShare} /></ChartCard>
-        <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}><LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} /></ChartCard>
+        <ChartCard title={`Занятость по отделам в ${unitLabel}`} empty={!view.hoursByDepartment.length}>
+          <EmployeeBars data={view.hoursByDepartment} onClick={(row) => setFilters({ ...filters, department: row.name })} />
+        </ChartCard>
+        <ChartCard title={`Распределение занятости по проектам в ${unitLabel}`} empty={!view.stackedHours.length}>
+          <Stacked data={view.stackedHours} keys={data.users.map((user) => user.name)} />
+        </ChartCard>
+        <ChartCard title={`Доля занятости по проектам в ${unitLabel}`} empty={!view.occupancyShare.length}>
+          <Donut data={view.occupancyShare} />
+        </ChartCard>
+        <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}>
+          <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} />
+        </ChartCard>
       </section>
       <Matrix rows={view.assignments} unit={unit} />
       <DataTable title={`Занятость сотрудников по проектам, ${unitSuffix}`} rows={view.assignments} columns={[

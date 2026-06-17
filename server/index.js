@@ -193,24 +193,39 @@ async function fetchFinanceSmartProcessItems(settings) {
   }
 }
 
+async function fetchDepartments() {
+  const sources = await Promise.allSettled([
+    fetchEntity('departments', { limit: 1000 }),
+    BITRIX_WEBHOOK_URL ? bitrixWebhookFetch('department.get') : Promise.resolve([])
+  ]);
+
+  return sources.flatMap((result) => {
+    if (result.status !== 'fulfilled') return [];
+    const value = result.value;
+    if (Array.isArray(value)) return value;
+    return value?.data || value?.items || value?.departments || [];
+  });
+}
+
 async function syncFromBitrix() {
   state.syncStatus = 'running';
   state.error = null;
   logSync('info', 'Запущена синхронизация данных');
 
   try {
-    const [me, users, tasks, workgroups, deals, financeSmart] = await Promise.allSettled([
+    const [me, users, tasks, workgroups, deals, financeSmart, departments] = await Promise.allSettled([
       vibeFetch('/me'),
       fetchEntity('users', { limit: 500 }),
       fetchEntity('tasks', { limit: 1000 }),
       fetchEntity('workgroups', { limit: 500 }),
       fetchEntity('deals', { limit: 1000 }),
-      fetchFinanceSmartProcessItems(state.settings)
+      fetchFinanceSmartProcessItems(state.settings),
+      fetchDepartments()
     ]);
 
     if (me.status === 'rejected') throw me.reason;
 
-    const errors = [users, tasks, workgroups, deals, financeSmart]
+    const errors = [users, tasks, workgroups, deals, financeSmart, departments]
       .filter((result) => result.status === 'rejected')
       .map((result) => result.reason.message);
 
@@ -226,6 +241,7 @@ async function syncFromBitrix() {
       deals: deals.status === 'fulfilled' ? deals.value.data || [] : [],
       financeItems: financeSmart.status === 'fulfilled' ? financeSmart.value.items || [] : [],
       financeEntityTypeId: financeSmart.status === 'fulfilled' ? financeSmart.value.entityTypeId : null,
+      departments: departments.status === 'fulfilled' ? departments.value || [] : [],
       errors
     };
 

@@ -54,6 +54,7 @@ export function emptyData() {
       financeByProject: [],
       taskTrend: [],
       hoursByEmployee: [],
+      hoursByDepartment: [],
       occupancyShare: [],
       stackedHours: [],
       hoursTrend: [],
@@ -65,9 +66,15 @@ export function emptyData() {
 export function applyFilters(data, filters) {
   const query = filters.query.toLowerCase();
   const range = resolveDateRange(filters);
+  const departmentEmployeeIds = new Set(
+    data.users
+      .filter((user) => !filters.department || user.department === filters.department)
+      .map((user) => user.id)
+  );
   const tasks = data.tasks.filter((task) => {
     return (!filters.project || task.projectId === filters.project)
       && (!filters.employee || task.responsibleId === filters.employee)
+      && (!filters.department || departmentEmployeeIds.has(task.responsibleId))
       && (!filters.taskStatus || task.status === filters.taskStatus)
       && matchesTaskRange(task, range)
       && (!query || JSON.stringify(task).toLowerCase().includes(query));
@@ -88,7 +95,12 @@ export function applyFilters(data, filters) {
       && (!filters.projectStatus || project.status === filters.projectStatus)
       && (!query || JSON.stringify(project).toLowerCase().includes(query));
   });
-  const users = data.users.filter((user) => employeeIds.has(user.id) && (!filters.department || user.department === filters.department));
+  const users = data.users.filter((user) => {
+    return (!filters.employee || user.id === filters.employee)
+      && (!filters.department || user.department === filters.department)
+      && (!filters.project || employeeIds.has(user.id))
+      && (!query || JSON.stringify(user).toLowerCase().includes(query) || employeeIds.has(user.id));
+  });
   const assignments = data.assignments.filter((row) => {
     return (!filters.project || row.projectId === filters.project)
       && (!filters.employee || row.employeeId === filters.employee)
@@ -197,6 +209,7 @@ function buildCharts(data) {
     hoursByEmployee: data.users
       .filter((user) => user.actualHours || user.closedHours)
       .map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load })),
+    hoursByDepartment: buildHoursByDepartment(data.users),
     hoursByProject: data.projects
       .filter((project) => project.actualHours || project.plannedHours || project.closedHours)
       .map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours })),
@@ -218,6 +231,29 @@ function buildCharts(data) {
     }).filter((row) => Object.keys(row).length > 1),
     expenseStructure: buildExpenseStructure(financeRecords)
   };
+}
+
+function buildHoursByDepartment(users) {
+  const grouped = new Map();
+  users.forEach((user) => {
+    const name = user.department || 'Не указан';
+    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0 };
+    current.hours += user.actualHours || 0;
+    current.closed += user.closedHours || 0;
+    current.loadTotal += user.load || 0;
+    current.employees += 1;
+    grouped.set(name, current);
+  });
+  return [...grouped.values()]
+    .map((row) => ({
+      name: row.name,
+      hours: Math.round(row.hours * 10) / 10,
+      closed: Math.round(row.closed * 10) / 10,
+      load: Math.round(row.loadTotal / Math.max(row.employees, 1)),
+      employees: row.employees
+    }))
+    .filter((row) => row.hours || row.closed || row.employees)
+    .sort((a, b) => b.hours - a.hours);
 }
 
 function buildFinanceTrend(records) {
