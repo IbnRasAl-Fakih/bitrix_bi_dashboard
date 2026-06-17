@@ -59,12 +59,28 @@ export default function DetailDrawer({ detail, data, onClose }) {
   const config = getDetailConfig(detail, data);
 
   return (
-    <aside className="fixed right-0 top-0 z-30 h-screen w-[min(780px,96vw)] overflow-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-      <button className="icon-btn float-right" onClick={onClose} title="Закрыть"><X size={18} /></button>
-      <h2 className="mb-2 text-xl font-bold">{detail.label}</h2>
-      <p className="mb-4 text-sm text-slate-500">{config.description}</p>
-      <DataTable title={config.title} rows={config.rows} columns={config.columns} />
-    </aside>
+    <div className="fixed inset-0 z-[210]">
+      <button
+        className="absolute inset-0 h-full w-full bg-slate-950/45 backdrop-blur-[2px]"
+        type="button"
+        aria-label="Закрыть детализацию"
+        onClick={onClose}
+      />
+      <aside className="absolute right-0 top-0 flex h-screen w-[min(860px,94vw)] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-start gap-4 border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-bold">{detail.label}</h2>
+            <p className="mt-2 text-sm text-slate-500">{config.description}</p>
+          </div>
+          <button className="icon-btn shrink-0" onClick={onClose} title="Закрыть">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-5">
+          <DataTable title={config.title} rows={config.rows} columns={config.columns} />
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -101,7 +117,7 @@ function getDetailConfig(detail, data) {
   if (key === 'employees' || key === 'avgLoad' || key === 'teamLoad') {
     return {
       title: key === 'employees' ? 'Сотрудники в проектах' : 'Загрузка сотрудников',
-      description: 'Сотрудники, участвующие в проектах, и их текущие показатели.',
+      description: 'Сотрудники и их текущие показатели с учетом выбранных фильтров.',
       rows: data.users,
       columns: userColumns
     };
