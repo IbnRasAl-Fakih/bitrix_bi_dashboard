@@ -15,10 +15,16 @@ const defaultMapping = {
   smartArticleField: 'ufCrm_8_ARTICLE_1C'
 };
 
+const defaultItsmMapping = {
+  smartProcessEntityTypeId: '1096',
+  smartProcessTitle: 'Заявки ITSM'
+};
+
 export default function SettingsPage({ status, syncNow, data }) {
   const [period, setPeriod] = useState(status.settings?.defaultPeriod || '90d');
   const [useDemoComplements, setUseDemoComplements] = useState(Boolean(status.settings?.useDemoComplements));
   const [mapping, setMapping] = useState({ ...defaultMapping, ...(status.settings?.financeMapping || {}) });
+  const [itsmMapping, setItsmMapping] = useState({ ...defaultItsmMapping, ...(status.settings?.itsmMapping || {}) });
   const [check, setCheck] = useState(null);
 
   async function checkAccess() {
@@ -30,7 +36,7 @@ export default function SettingsPage({ status, syncNow, data }) {
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, financeMapping: mapping })
+      body: JSON.stringify({ defaultPeriod: period, useDemoComplements: nextDemoValue, financeMapping: mapping, itsmMapping })
     });
     await syncNow();
   }
@@ -72,6 +78,8 @@ export default function SettingsPage({ status, syncNow, data }) {
               <p>Последняя синхронизация: {status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString('ru-RU') : 'нет'}</p>
               <p>Смарт-процесс финансов: {data.meta.financeSmartProcess?.entityTypeId || mapping.smartProcessEntityTypeId || 'не найден'}</p>
               <p>Финансовых строк: {data.meta.financeSmartProcess?.records ?? 0}</p>
+              <p>Смарт-таблица ITSM: {data.meta.itsmSmartProcess?.entityTypeId || itsmMapping.smartProcessEntityTypeId || 1096}</p>
+              <p>Заявок ITSM: {data.meta.itsmSmartProcess?.records ?? 0}</p>
               <p>Связанные задачи: {data.meta.taskRelations?.available ? `${data.meta.taskRelations.count} связей получено` : 'нужен BITRIX_WEBHOOK_URL'}</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -93,6 +101,11 @@ export default function SettingsPage({ status, syncNow, data }) {
             <SettingsInput label="Поле даты" value={mapping.smartDateField} onChange={(value) => setMapping({ ...mapping, smartDateField: value })} />
             <SettingsInput label="Поле иерархии / типа ДДС" value={mapping.smartHierarchyField} onChange={(value) => setMapping({ ...mapping, smartHierarchyField: value })} />
             <SettingsInput label="Поле статьи расходов/доходов" value={mapping.smartArticleField} onChange={(value) => setMapping({ ...mapping, smartArticleField: value })} />
+            <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
+              <h3 className="mb-3 text-base font-bold">Заявки ITSM</h3>
+              <SettingsInput label="Название смарт-таблицы ITSM" value={itsmMapping.smartProcessTitle} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessTitle: value })} />
+              <SettingsInput label="ID смарт-таблицы ITSM" value={itsmMapping.smartProcessEntityTypeId} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessEntityTypeId: value })} />
+            </div>
             <button className="btn btn-primary mt-2" onClick={() => save()}>Сохранить настройки</button>
           </div>
         </div>

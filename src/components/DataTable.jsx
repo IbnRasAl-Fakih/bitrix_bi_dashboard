@@ -7,9 +7,10 @@ import { formatCell, riskLabel } from '../utils/format.js';
 const NUMERIC_KEYS = new Set([
   'income', 'expense', 'profit', 'plannedHours', 'actualHours', 'deviation', 'load',
   'progress', 'margin', 'efficiency', 'completionRate', 'avgLoad', 'teamLoad',
-  'taskCount', 'openTasks', 'closedTasks', 'overdueTasks', 'employees', 'tasks'
+  'taskCount', 'openTasks', 'closedTasks', 'overdueTasks', 'employees', 'tasks',
+  'requestNumber'
 ]);
-const DATE_KEYS = new Set(['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt']);
+const DATE_KEYS = new Set(['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt', 'createdTime', 'updatedTime', 'movedTime', 'registeredAt', 'completedAt']);
 
 export default function DataTable({ title, rows, columns }) {
   const [sort, setSort] = useState({ key: columns[0][0], dir: 'asc' });
@@ -268,7 +269,7 @@ function excelCellValue(key, value) {
     }[value] || value;
   }
   if (key === 'risk') return riskLabel(value);
-  if (key === 'overdue') return value ? 'Да' : 'Нет';
+  if (key === 'overdue' || key === 'violated') return value ? 'Да' : 'Нет';
   return String(value);
 }
 

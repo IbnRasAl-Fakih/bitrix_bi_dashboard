@@ -50,6 +50,7 @@ export function emptyData() {
     projects: [],
     tasks: [],
     assignments: [],
+    itsmRequests: [],
     charts: {
       financeByProject: [],
       taskTrend: [],

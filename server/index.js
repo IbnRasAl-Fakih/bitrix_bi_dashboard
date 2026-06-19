@@ -42,6 +42,10 @@ const state = {
       smartIncomeMarkers: ['Sales', 'Доход'],
       smartExpenseMarkers: ['CoGS', 'Расход', 'Затрат']
     },
+    itsmMapping: {
+      smartProcessEntityTypeId: '1096',
+      smartProcessTitle: 'Заявки ITSM'
+    },
     visibleKpis: [
       'activeProjects', 'completedProjects', 'employees', 'tasks', 'openTasks', 'closedTasks',
       'plannedHours', 'actualHours', 'closedHours', 'avgLoad', 'income', 'expense',
@@ -193,6 +197,18 @@ async function fetchFinanceSmartProcessItems(settings) {
   }
 }
 
+async function fetchItsmSmartProcessItems(settings) {
+  const warnings = [];
+  const mapping = settings.itsmMapping || {};
+  try {
+    const entityTypeId = mapping.smartProcessEntityTypeId || '1096';
+    const response = await fetchEntity(`items/${entityTypeId}`, { limit: 5000 });
+    return { items: response.data || [], entityTypeId: Number(entityTypeId), warnings };
+  } catch (error) {
+    return { items: [], entityTypeId: null, warnings: [`Не удалось получить смарт-таблицу "Заявки ITSM": ${sanitize(error.message)}`] };
+  }
+}
+
 async function fetchDepartments() {
   const sources = await Promise.allSettled([
     fetchEntity('departments', { limit: 1000 }),
@@ -213,24 +229,28 @@ async function syncFromBitrix() {
   logSync('info', 'Запущена синхронизация данных');
 
   try {
-    const [me, users, tasks, workgroups, deals, financeSmart, departments] = await Promise.allSettled([
+    const [me, users, tasks, workgroups, deals, financeSmart, itsmSmart, departments] = await Promise.allSettled([
       vibeFetch('/me'),
       fetchEntity('users', { limit: 500 }),
       fetchEntity('tasks', { limit: 1000 }),
       fetchEntity('workgroups', { limit: 500 }),
       fetchEntity('deals', { limit: 1000 }),
       fetchFinanceSmartProcessItems(state.settings),
+      fetchItsmSmartProcessItems(state.settings),
       fetchDepartments()
     ]);
 
     if (me.status === 'rejected') throw me.reason;
 
-    const errors = [users, tasks, workgroups, deals, financeSmart, departments]
+    const errors = [users, tasks, workgroups, deals, financeSmart, itsmSmart, departments]
       .filter((result) => result.status === 'rejected')
       .map((result) => result.reason.message);
 
     if (financeSmart.status === 'fulfilled') {
       errors.push(...financeSmart.value.warnings);
+    }
+    if (itsmSmart.status === 'fulfilled') {
+      errors.push(...itsmSmart.value.warnings);
     }
 
     const raw = {
@@ -241,6 +261,8 @@ async function syncFromBitrix() {
       deals: deals.status === 'fulfilled' ? deals.value.data || [] : [],
       financeItems: financeSmart.status === 'fulfilled' ? financeSmart.value.items || [] : [],
       financeEntityTypeId: financeSmart.status === 'fulfilled' ? financeSmart.value.entityTypeId : null,
+      itsmItems: itsmSmart.status === 'fulfilled' ? itsmSmart.value.items || [] : [],
+      itsmEntityTypeId: itsmSmart.status === 'fulfilled' ? itsmSmart.value.entityTypeId : null,
       departments: departments.status === 'fulfilled' ? departments.value || [] : [],
       errors
     };

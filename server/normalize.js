@@ -28,6 +28,66 @@ function stringTags(value) {
     .filter(Boolean))];
 }
 
+function tableCellValue(value) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.map((item) => tableCellValue(item)).filter(Boolean).join(', ');
+  if (typeof value === 'object') {
+    return value.title ?? value.TITLE ?? value.name ?? value.NAME ?? value.value ?? value.VALUE ?? value.label ?? value.LABEL ?? value.id ?? value.ID ?? JSON.stringify(value);
+  }
+  return value;
+}
+
+function parseGenericSmartRows(items) {
+  return (items || []).map((item, index) => {
+    const row = {};
+    Object.entries(item || {}).forEach(([key, value]) => {
+      row[key] = tableCellValue(value);
+    });
+
+    const sourceRequestNumber = firstValue(row, ['requestNumber', 'number', 'code', 'Номер заявки', 'Номер Заявки']);
+    const shortDescription = sourceRequestNumber || firstValue(row, ['shortDescription', 'title', 'name', 'Краткое описание заявки', 'Краткое описание ЗН', 'Краткое описание']);
+    const fullDescription = firstValue(row, ['fullDescription', 'description', 'Описание', 'Полное описание заявки', 'Полное описание ЗИ', 'Полное описание ЗН', 'Полное описание']);
+    const requestType = firstValue(row, ['requestType', 'type', 'Тип заявки', 'Тип', 'categoryName', 'categoryId']);
+    const initiator = firstValue(row, ['initiator', 'createdBy', 'createdByName', 'Инициатор']);
+    const assignee = firstValue(row, ['assignee', 'assignedById', 'assignedByName', 'Исполнитель']);
+    const solution = firstValue(row, ['solution', 'result', 'resolution', 'Решение']);
+    const registeredAt = dateOrNull(firstValue(row, ['registeredAt', 'createdTime', 'createdAt', 'Дата регистрации заявки', 'Дата регистрации ЗИ', 'Дата регистрации']));
+    const completedAt = dateOrNull(firstValue(row, ['completedAt', 'Дата выполнения заявки', 'Дата выполнения']));
+    const closedAt = dateOrNull(firstValue(row, ['closedAt', 'closedTime', 'Дата закрытия заявки', 'Дата закрытия']));
+
+    return {
+      ...row,
+      id: String(item?.id ?? item?.ID ?? index + 1),
+      requestNumber: index + 1,
+      shortDescription,
+      fullDescription,
+      requestType,
+      initiator,
+      assignee,
+      solution,
+      registeredAt,
+      completedAt,
+      closedAt,
+      violated: booleanValue(firstValue(row, ['violated', 'Нарушено', 'overdue']))
+    };
+  });
+}
+
+function firstValue(row, keys) {
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return '';
+}
+
+function booleanValue(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return ['y', 'yes', 'true', '1', 'да', 'нарушено'].includes(normalized);
+}
+
 function buildDepartmentMap(departments) {
   const map = new Map();
   departments.forEach((department) => {
@@ -101,6 +161,7 @@ function emptyAnalytics(warnings = []) {
     tasks: [],
     assignments: [],
     financeRecords: [],
+    itsmRequests: [],
     charts: emptyCharts()
   };
 }
@@ -167,6 +228,7 @@ export function normalizeBitrixData(raw, settings) {
   });
 
   const financeRecords = parseFinanceRecords(raw.financeItems || [], financeSettings);
+  const itsmRequests = parseGenericSmartRows(raw.itsmItems || []);
   const financeByProject = aggregateFinanceByProject(financeRecords);
   const projects = mergeFinanceProjects(baseProjects, financeByProject);
   const hasIncome = financeRecords.some((record) => record.kind === 'income');
@@ -188,13 +250,18 @@ export function normalizeBitrixData(raw, settings) {
     warnings.push('В смарт-процессе “Финансы проекта” не найдены строки расходов.');
   }
 
-  const data = assembleAnalytics(users, projects, taskRows, financeByProject, financeRecords, warnings);
-  data.meta.realRecords = users.length + projects.length + taskRows.length + (raw.deals || []).length + financeRecords.length;
+  const data = assembleAnalytics(users, projects, taskRows, financeByProject, financeRecords, warnings, itsmRequests);
+  data.meta.realRecords = users.length + projects.length + taskRows.length + (raw.deals || []).length + financeRecords.length + itsmRequests.length;
   data.meta.financeSmartProcess = {
     entityTypeId: raw.financeEntityTypeId || financeSettings.smartProcessEntityTypeId || null,
     records: financeRecords.length,
     projectField: financeSettings.smartProjectField,
     amountField: financeSettings.smartAmountField
+  };
+  data.meta.itsmSmartProcess = {
+    entityTypeId: raw.itsmEntityTypeId || settings.itsmMapping?.smartProcessEntityTypeId || '1096',
+    records: itsmRequests.length,
+    title: settings.itsmMapping?.smartProcessTitle || 'Заявки ITSM'
   };
   data.meta.taskRelations = {
     available: Boolean(raw.taskRelations?.available),
@@ -209,7 +276,8 @@ export function normalizeBitrixData(raw, settings) {
     tasks: taskRows.length > 0,
     taskTime: taskRows.some((task) => task.plannedHours > 0 || task.actualHours > 0 || task.closedHours > 0),
     financeIncome: hasIncome,
-    financeExpense: hasExpense
+    financeExpense: hasExpense,
+    itsmRequests: itsmRequests.length > 0
   };
   if (settings.useDemoComplements) {
     return applyDemoComplements(data);
@@ -308,7 +376,7 @@ function mergeFinanceProjects(projects, financeByProject) {
   return result;
 }
 
-function assembleAnalytics(users, projects, tasks, financeByProject, financeRecords, warnings) {
+function assembleAnalytics(users, projects, tasks, financeByProject, financeRecords, warnings, itsmRequests = []) {
   const userById = new Map(users.map((user) => [user.id, user]));
   const projectById = new Map(projects.map((project) => [project.id, project]));
 
@@ -395,7 +463,7 @@ function assembleAnalytics(users, projects, tasks, financeByProject, financeReco
   };
 
   return {
-    meta: { source: 'bitrix', warnings, generatedAt: new Date().toISOString(), realRecords: users.length + projects.length + tasks.length + financeRecords.length },
+    meta: { source: 'bitrix', warnings, generatedAt: new Date().toISOString(), realRecords: users.length + projects.length + tasks.length + financeRecords.length + itsmRequests.length },
     kpis,
     users: workload,
     projects: enrichedProjects,
@@ -410,6 +478,7 @@ function assembleAnalytics(users, projects, tasks, financeByProject, financeReco
     })),
     assignments,
     financeRecords,
+    itsmRequests,
     charts: buildCharts(enrichedProjects, workload, assignments, tasks, financeRecords)
   };
 }
@@ -608,6 +677,7 @@ function nullableRound(value) {
 
 function applyDemoComplements(data) {
   addDemoStrategy(data);
+  addDemoItsmRequests(data);
 
   const demoWarnings = [
     ...data.meta.warnings,
@@ -776,16 +846,171 @@ function applyDemoComplements(data) {
     ...data.meta,
     source: 'bitrix-demo',
     demoComplements: true,
+    realRecords: data.users.length + data.projects.length + data.tasks.length + data.financeRecords.length + (data.itsmRequests || []).length,
     warnings: demoWarnings,
     availability: {
       ...data.meta.availability,
       taskTime: true,
       financeIncome: true,
-      financeExpense: true
+      financeExpense: true,
+      itsmRequests: (data.itsmRequests || []).length > 0
     }
   };
 
   return data;
+}
+
+function addDemoItsmRequests(data) {
+  if (data.itsmRequests?.length) return;
+
+  data.itsmRequests = [
+    {
+      id: 'demo-itsm-1',
+      requestNumber: 'MTAA-DQXF3T',
+      shortDescription: 'Контроль ЕР по БЕ в ИТ0001',
+      fullDescription: 'Контроль ЕР по БЕ в ИТ0001',
+      requestType: 'запрос на изменение',
+      initiator: 'Абдикеримова М. Т.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-02-04'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-2',
+      requestNumber: 'ESMA-DU89XP',
+      shortDescription: 'Добавлении кредитора по СН ОДС (ВО 7РБП)',
+      fullDescription: 'Добавлении кредитора по СН ОДС (ВО 7РБП)',
+      requestType: 'запрос на изменение',
+      initiator: 'Мальдыбекова Э. С.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-05-19'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-3',
+      requestNumber: 'LAAA-DU89ST',
+      shortDescription: 'Дополнения к настройкам сегмента РУ бизнес сфер по 33ZA',
+      fullDescription: 'Дополнения к настройкам сегмента РУ бизнес сфер по 33ZA',
+      requestType: 'запрос на изменение',
+      initiator: 'Ахметова Л. А.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-05-20'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-4',
+      requestNumber: 'ESMA-DUA8RR',
+      shortDescription: 'Перенос в PCE добавлении кредитора по СН ОДС (ВО 7РБП)',
+      fullDescription: 'Перенос в PCE добавлении кредитора по СН ОДС (ВО 7РБП)',
+      requestType: 'запрос на изменение',
+      initiator: 'Мальдыбекова Э. С.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-05-21'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-5',
+      requestNumber: 'ATKV-DUB8RY',
+      shortDescription: 'Корректировка ZH58, переменн. РП и должности',
+      fullDescription: 'Корректировка ZH58, переменн. РП и должности',
+      requestType: 'запрос на изменение',
+      initiator: 'Карабаева А. Т.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-05-22'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-6',
+      requestNumber: 'ATKV-DUH6GY',
+      shortDescription: 'Дополнение справочника должностей в SAP',
+      fullDescription: 'Дополнение справочника должностей в SAP',
+      requestType: 'запрос на изменение',
+      initiator: 'Карабаева А. Т.',
+      assignee: 'Нурбакова Э. Е.',
+      solution: 'Нурбакова Э. Е.',
+      registeredAt: dateOrNull('2026-05-28'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-7',
+      requestNumber: '',
+      shortDescription: 'Ошибка при указании МВП в Заказе РМ (ТОРО) 331200031160',
+      fullDescription: 'В основных данных Заказа РМ (ТОРО) некорректно указан МВП. Заказ уже был рассчитан.',
+      requestType: 'инцидент',
+      initiator: 'Самалтикова А.К.',
+      assignee: 'Непашева Э.Н.',
+      solution: 'Создать новый Заказ. Сделать перенос затрат с МВЗ, на который был рассчитан "старый" Заказ, на новый Заказ. Рассчитать новый Заказ актуальным периодом.',
+      registeredAt: dateOrNull('2023-12-05'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-8',
+      requestNumber: '',
+      shortDescription: 'Не могу создать ДВС Бизнес-сферу указываю 29 NA, а оно обратно исчезает',
+      fullDescription: 'Не могу создать ДВС Бизнес-сферу указываю 29 NA, а оно обратно исчезает.',
+      requestType: 'инцидент',
+      initiator: 'Байбатчаев О. и др.',
+      assignee: 'Сложеникина Е.',
+      solution: 'Некорректный перенос запроса в продуктив',
+      registeredAt: dateOrNull('2023-12-12'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-9',
+      requestNumber: '',
+      shortDescription: 'Ошибка создание ДВС',
+      fullDescription: 'Ошибка создание ДВС',
+      requestType: 'инцидент',
+      initiator: 'Тойшманова А.Р.',
+      assignee: 'Шокалакова',
+      solution: 'В договоре проверить сумму в закладке ПЛ/Данные и ПЛ/спецификация ПЛ/Данные (-) ПЛ/спецификация (=) ???',
+      registeredAt: dateOrNull('2023-12-01'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-10',
+      requestNumber: '',
+      shortDescription: 'Подскажите пожалуйста что тут не так?',
+      fullDescription: 'Ошибка в ДВС "Укажите только действующие контировки"',
+      requestType: 'инцидент',
+      initiator: 'Байбатчаев Олжас',
+      assignee: 'Шокалакова',
+      solution: 'В инструкции по созданию ДВС написано указать СПП или СГ',
+      registeredAt: dateOrNull('2023-12-04'),
+      source: 'demo-itsm'
+    },
+    {
+      id: 'demo-itsm-11',
+      requestNumber: '',
+      shortDescription: 'Ошибка при сохранении КД ДС2',
+      fullDescription: 'Ошибка - нет цены',
+      requestType: 'инцидент',
+      initiator: 'Alla G Ivanova',
+      assignee: 'Шейкина',
+      solution: 'Некорректно создана позиция контракта при сохранении ДС1, поправила',
+      registeredAt: dateOrNull('2023-12-01'),
+      source: 'demo-itsm'
+    }
+  ];
+
+  data.itsmRequests = data.itsmRequests.map((row, index) => ({
+    ...row,
+    requestNumber: index + 1,
+    shortDescription: row.requestNumber || row.shortDescription,
+    completedAt: row.completedAt || row.registeredAt,
+    closedAt: row.closedAt || row.registeredAt,
+    violated: row.violated ?? [2, 8].includes(index)
+  }));
+
+  data.meta.itsmSmartProcess = {
+    ...(data.meta.itsmSmartProcess || {}),
+    records: data.itsmRequests.length
+  };
 }
 
 function addDemoStrategy(data) {

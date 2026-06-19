@@ -10,6 +10,7 @@ export {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock,
   Database,
   Download,

@@ -24,10 +24,10 @@ export function formatKpi(key, value) {
 export function formatCell(key, value) {
   if (value === null || value === undefined || value === '') return '-';
   if (['income', 'expense', 'profit'].includes(key)) return formatMoney(value);
-  if (key === 'createdAt') {
+  if (key === 'createdAt' || ['createdTime', 'updatedTime', 'movedTime'].includes(key)) {
     return new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
   }
-  if (['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt'].includes(key)) {
+  if (['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt', 'registeredAt', 'completedAt'].includes(key)) {
     return new Date(value).toLocaleDateString('ru-RU');
   }
   if (key === 'status') {
@@ -40,7 +40,7 @@ export function formatCell(key, value) {
     }[value] || value;
   }
   if (key === 'risk') return riskLabel(value);
-  if (key === 'overdue') return value ? 'Да' : 'Нет';
+  if (key === 'overdue' || key === 'violated') return value ? 'Да' : 'Нет';
   if (key === 'url') {
     return value
       ? createElement('a', { className: 'text-brand-600 hover:underline', href: value, target: '_blank', rel: 'noreferrer' }, 'Открыть')

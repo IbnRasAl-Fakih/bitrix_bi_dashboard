@@ -11,6 +11,7 @@ import StrategyDetailPage from './pages/StrategyDetailPage.jsx';
 import ProjectsPage from './pages/ProjectsPage.jsx';
 import FinancePage from './pages/FinancePage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
+import ItsmPage from './pages/ItsmPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import SyncPage from './pages/SyncPage.jsx';
@@ -115,6 +116,7 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage data={filtered} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
+            <Route path="/itsm" element={<ItsmPage data={data} />} />
             <Route path="/employees" element={<EmployeesPage data={filtered} />} />
             <Route path="/settings" element={<SettingsPage status={status} syncNow={syncNow} data={data} />} />
             <Route path="/sync" element={<SyncPage status={status} syncNow={syncNow} syncing={syncing} />} />
