@@ -37,8 +37,9 @@ function tableCellValue(value) {
   return value;
 }
 
-function parseGenericSmartRows(items, settings = {}, users = []) {
+function parseGenericSmartRows(items, settings = {}, users = [], fields = null) {
   const userById = new Map((users || []).map((user) => [String(user.id), user.name]));
+  const enumMaps = buildFieldEnumMaps(fields);
   return (items || []).map((item, index) => {
     const row = {};
     Object.entries(item || {}).forEach(([key, value]) => {
@@ -59,7 +60,9 @@ function parseGenericSmartRows(items, settings = {}, users = []) {
     const mappedRequestNumber = firstValue(row, [settings.requestNumberField, 'ufCrm36Id'].filter(Boolean)) || sourceRequestNumber || index + 1;
     const mappedShortDescription = firstValue(row, [settings.shortDescriptionField, 'ufCrm36ShortDescription'].filter(Boolean)) || shortDescription;
     const mappedFullDescription = firstValue(row, [settings.fullDescriptionField, 'ufCrm36FullDescription'].filter(Boolean)) || fullDescription;
-    const mappedRequestType = firstValue(row, [settings.requestTypeField, 'ufCrm36Type'].filter(Boolean)) || requestType;
+    const requestTypeField = settings.requestTypeField || 'ufCrm36Type';
+    const mappedRequestTypeRaw = firstValue(row, [requestTypeField, 'ufCrm36Type'].filter(Boolean)) || requestType;
+    const mappedRequestType = enumMaps.get(requestTypeField)?.get(String(mappedRequestTypeRaw)) || enumMaps.get('ufCrm36Type')?.get(String(mappedRequestTypeRaw)) || mappedRequestTypeRaw;
     const mappedInitiatorRaw = firstValue(row, [settings.initiatorField, 'ufCrm36Initiator'].filter(Boolean)) || initiator;
     const mappedAssigneeRaw = firstValue(row, [settings.assigneeField, 'ufCrm36Executor'].filter(Boolean)) || assignee;
     const mappedSolution = firstValue(row, [settings.solutionField, 'ufCrm36Solution'].filter(Boolean)) || solution;
@@ -96,6 +99,27 @@ function firstValue(row, keys) {
     if (value !== null && value !== undefined && value !== '') return value;
   }
   return '';
+}
+
+function buildFieldEnumMaps(fields) {
+  const maps = new Map();
+  const entries = Array.isArray(fields)
+    ? fields.map((field) => [field.key || field.name || field.code, field])
+    : Object.entries(fields || {});
+
+  entries.forEach(([key, field]) => {
+    const items = field?.items || field?.Items || field?.values || field?.VALUES;
+    if (!key || !Array.isArray(items)) return;
+    const map = new Map();
+    items.forEach((item) => {
+      const id = item.ID ?? item.id ?? item.VALUE_ID ?? item.valueId ?? item.value;
+      const value = item.VALUE ?? item.value ?? item.NAME ?? item.name ?? item.label;
+      if (id !== null && id !== undefined && value !== null && value !== undefined) map.set(String(id), String(value));
+    });
+    if (map.size) maps.set(String(key), map);
+  });
+
+  return maps;
 }
 
 function booleanValue(value) {
@@ -245,7 +269,7 @@ export function normalizeBitrixData(raw, settings) {
   });
 
   const financeRecords = parseFinanceRecords(raw.financeItems || [], financeSettings);
-  const itsmRequests = parseGenericSmartRows(raw.itsmItems || [], settings.itsmMapping || {}, users);
+  const itsmRequests = parseGenericSmartRows(raw.itsmItems || [], settings.itsmMapping || {}, users, raw.itsmFields);
   const financeByProject = aggregateFinanceByProject(financeRecords);
   const projects = mergeFinanceProjects(baseProjects, financeByProject);
   const hasIncome = financeRecords.some((record) => record.kind === 'income');

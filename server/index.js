@@ -213,8 +213,14 @@ async function fetchItsmSmartProcessItems(settings) {
   const mapping = settings.itsmMapping || {};
   try {
     const entityTypeId = mapping.smartProcessEntityTypeId || '1096';
-    const response = await fetchEntity(`items/${entityTypeId}`, { limit: 5000 });
-    return { items: response.data || [], entityTypeId: Number(entityTypeId), warnings };
+    const [itemsResponse, fieldsResponse] = await Promise.all([
+      fetchEntity(`items/${entityTypeId}`, { limit: 5000 }),
+      fetchEntity(`items/${entityTypeId}/fields`).catch((error) => {
+        warnings.push(`ITSM fields unavailable: ${sanitize(error.message)}`);
+        return { data: null };
+      })
+    ]);
+    return { items: itemsResponse.data || [], fields: fieldsResponse.data?.fields || fieldsResponse.data || null, entityTypeId: Number(entityTypeId), warnings };
   } catch (error) {
     return { items: [], entityTypeId: null, warnings: [`Не удалось получить смарт-таблицу "Заявки ITSM": ${sanitize(error.message)}`] };
   }
@@ -273,6 +279,7 @@ async function syncFromBitrix() {
       financeItems: financeSmart.status === 'fulfilled' ? financeSmart.value.items || [] : [],
       financeEntityTypeId: financeSmart.status === 'fulfilled' ? financeSmart.value.entityTypeId : null,
       itsmItems: itsmSmart.status === 'fulfilled' ? itsmSmart.value.items || [] : [],
+      itsmFields: itsmSmart.status === 'fulfilled' ? itsmSmart.value.fields || null : null,
       itsmEntityTypeId: itsmSmart.status === 'fulfilled' ? itsmSmart.value.entityTypeId : null,
       departments: departments.status === 'fulfilled' ? departments.value || [] : [],
       errors
