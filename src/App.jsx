@@ -29,7 +29,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [detail, setDetail] = useState(null);
   const [filters, setFilters] = useState({
-    period: '90d',
+    period: '',
     startDate: '',
     endDate: '',
     project: '',
@@ -37,7 +37,10 @@ export default function App() {
     department: '',
     projectStatus: '',
     taskStatus: '',
-    query: ''
+    query: '',
+    itsmType: '',
+    itsmInitiator: '',
+    itsmAssignee: ''
   });
 
   useEffect(() => {
@@ -116,7 +119,7 @@ export default function App() {
             <Route path="/projects" element={<ProjectsPage data={filtered} />} />
             <Route path="/finance" element={<FinancePage data={filtered} />} />
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
-            <Route path="/itsm" element={<ItsmPage data={data} />} />
+            <Route path="/itsm" element={<ItsmPage data={filtered} />} />
             <Route path="/employees" element={<EmployeesPage data={filtered} />} />
             <Route path="/settings" element={<SettingsPage status={status} syncNow={syncNow} data={data} />} />
             <Route path="/sync" element={<SyncPage status={status} syncNow={syncNow} syncing={syncing} />} />

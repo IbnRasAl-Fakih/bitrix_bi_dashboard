@@ -107,8 +107,14 @@ export function applyFilters(data, filters) {
       && (!filters.employee || row.employeeId === filters.employee)
       && (!filters.department || row.department === filters.department);
   });
+  const itsmRequests = (data.itsmRequests || []).filter((request) => {
+    return matchesItsmRange(request, range)
+      && (!filters.itsmType || String(request.requestType) === String(filters.itsmType))
+      && (!filters.itsmInitiator || String(request.initiator) === String(filters.itsmInitiator))
+      && (!filters.itsmAssignee || String(request.assignee) === String(filters.itsmAssignee));
+  });
 
-  return recalc({ ...data, tasks, projects, users, assignments, financeRecords });
+  return recalc({ ...data, tasks, projects, users, assignments, financeRecords, itsmRequests });
 }
 
 function resolveDateRange(filters) {
@@ -152,6 +158,18 @@ function matchesTaskRange(task, range) {
     task.startDatePlan,
     task.endDatePlan,
     task.deadline
+  ].some((value) => matchesPointDate(value, range));
+}
+
+function matchesItsmRange(request, range) {
+  if (!range.start && !range.end) return true;
+  return [
+    request.registeredAt,
+    request.completedAt,
+    request.closedAt,
+    request.createdTime,
+    request.updatedTime,
+    request.movedTime
   ].some((value) => matchesPointDate(value, range));
 }
 

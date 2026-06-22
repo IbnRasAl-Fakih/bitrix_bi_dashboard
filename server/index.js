@@ -44,7 +44,18 @@ const state = {
     },
     itsmMapping: {
       smartProcessEntityTypeId: '1096',
-      smartProcessTitle: 'Заявки ITSM'
+      smartProcessTitle: 'Заявки ITSM',
+      requestNumberField: 'ufCrm36Id',
+      shortDescriptionField: 'ufCrm36ShortDescription',
+      fullDescriptionField: 'ufCrm36FullDescription',
+      requestTypeField: 'ufCrm36Type',
+      initiatorField: 'ufCrm36Initiator',
+      assigneeField: 'ufCrm36Executor',
+      solutionField: 'ufCrm36Solution',
+      registeredAtField: 'ufCrm36RegistrationDate',
+      completedAtField: 'ufCrm36ProcessingDate',
+      closedAtField: 'ufCrm36ClosedDate',
+      violatedField: 'ufCrm36Violated'
     },
     visibleKpis: [
       'activeProjects', 'completedProjects', 'employees', 'tasks', 'openTasks', 'closedTasks',

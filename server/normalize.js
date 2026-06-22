@@ -37,7 +37,8 @@ function tableCellValue(value) {
   return value;
 }
 
-function parseGenericSmartRows(items) {
+function parseGenericSmartRows(items, settings = {}, users = []) {
+  const userById = new Map((users || []).map((user) => [String(user.id), user.name]));
   return (items || []).map((item, index) => {
     const row = {};
     Object.entries(item || {}).forEach(([key, value]) => {
@@ -55,20 +56,36 @@ function parseGenericSmartRows(items) {
     const completedAt = dateOrNull(firstValue(row, ['completedAt', 'Дата выполнения заявки', 'Дата выполнения']));
     const closedAt = dateOrNull(firstValue(row, ['closedAt', 'closedTime', 'Дата закрытия заявки', 'Дата закрытия']));
 
+    const mappedRequestNumber = firstValue(row, [settings.requestNumberField, 'ufCrm36Id'].filter(Boolean)) || sourceRequestNumber || index + 1;
+    const mappedShortDescription = firstValue(row, [settings.shortDescriptionField, 'ufCrm36ShortDescription'].filter(Boolean)) || shortDescription;
+    const mappedFullDescription = firstValue(row, [settings.fullDescriptionField, 'ufCrm36FullDescription'].filter(Boolean)) || fullDescription;
+    const mappedRequestType = firstValue(row, [settings.requestTypeField, 'ufCrm36Type'].filter(Boolean)) || requestType;
+    const mappedInitiatorRaw = firstValue(row, [settings.initiatorField, 'ufCrm36Initiator'].filter(Boolean)) || initiator;
+    const mappedAssigneeRaw = firstValue(row, [settings.assigneeField, 'ufCrm36Executor'].filter(Boolean)) || assignee;
+    const mappedSolution = firstValue(row, [settings.solutionField, 'ufCrm36Solution'].filter(Boolean)) || solution;
+    const mappedRegisteredAt = dateOrNull(firstValue(row, [settings.registeredAtField, 'ufCrm36RegistrationDate'].filter(Boolean))) || registeredAt;
+    const mappedCompletedAt = dateOrNull(firstValue(row, [settings.completedAtField, 'ufCrm36ProcessingDate'].filter(Boolean))) || completedAt;
+    const mappedClosedAt = dateOrNull(firstValue(row, [settings.closedAtField, 'ufCrm36ClosedDate'].filter(Boolean))) || closedAt;
+    const mappedViolated = firstValue(row, [settings.violatedField, 'ufCrm36Violated'].filter(Boolean));
+    const initiatorId = /^\d+$/.test(String(mappedInitiatorRaw)) ? String(mappedInitiatorRaw) : '';
+    const assigneeId = /^\d+$/.test(String(mappedAssigneeRaw)) ? String(mappedAssigneeRaw) : '';
+
     return {
       ...row,
       id: String(item?.id ?? item?.ID ?? index + 1),
-      requestNumber: index + 1,
-      shortDescription,
-      fullDescription,
-      requestType,
-      initiator,
-      assignee,
-      solution,
-      registeredAt,
-      completedAt,
-      closedAt,
-      violated: booleanValue(firstValue(row, ['violated', 'Нарушено', 'overdue']))
+      requestNumber: mappedRequestNumber,
+      shortDescription: mappedShortDescription,
+      fullDescription: mappedFullDescription,
+      requestType: mappedRequestType,
+      initiator: userById.get(initiatorId) || mappedInitiatorRaw,
+      initiatorId,
+      assignee: userById.get(assigneeId) || mappedAssigneeRaw,
+      assigneeId,
+      solution: mappedSolution,
+      registeredAt: mappedRegisteredAt,
+      completedAt: mappedCompletedAt,
+      closedAt: mappedClosedAt,
+      violated: mappedViolated === '' ? booleanValue(firstValue(row, ['violated', 'overdue'])) : booleanValue(mappedViolated)
     };
   });
 }
@@ -228,7 +245,7 @@ export function normalizeBitrixData(raw, settings) {
   });
 
   const financeRecords = parseFinanceRecords(raw.financeItems || [], financeSettings);
-  const itsmRequests = parseGenericSmartRows(raw.itsmItems || []);
+  const itsmRequests = parseGenericSmartRows(raw.itsmItems || [], settings.itsmMapping || {}, users);
   const financeByProject = aggregateFinanceByProject(financeRecords);
   const projects = mergeFinanceProjects(baseProjects, financeByProject);
   const hasIncome = financeRecords.some((record) => record.kind === 'income');
@@ -861,7 +878,7 @@ function applyDemoComplements(data) {
 }
 
 function addDemoItsmRequests(data) {
-  if (data.itsmRequests?.length) return;
+  const realItsmRequests = data.itsmRequests || [];
 
   data.itsmRequests = [
     {
@@ -998,14 +1015,19 @@ function addDemoItsmRequests(data) {
     }
   ];
 
-  data.itsmRequests = data.itsmRequests.map((row, index) => ({
-    ...row,
-    requestNumber: index + 1,
-    shortDescription: row.requestNumber || row.shortDescription,
-    completedAt: row.completedAt || row.registeredAt,
-    closedAt: row.closedAt || row.registeredAt,
-    violated: row.violated ?? [2, 8].includes(index)
-  }));
+  data.itsmRequests = [...realItsmRequests, ...data.itsmRequests];
+
+  data.itsmRequests = data.itsmRequests.map((row, index) => {
+    const isDemo = row.source === 'demo-itsm';
+    return {
+      ...row,
+      requestNumber: isDemo ? index + 1 : row.requestNumber,
+      shortDescription: isDemo ? row.requestNumber || row.shortDescription : row.shortDescription,
+      completedAt: isDemo ? row.completedAt || row.registeredAt : row.completedAt,
+      closedAt: isDemo ? row.closedAt || row.registeredAt : row.closedAt,
+      violated: row.violated ?? (isDemo && [2, 8].includes(index))
+    };
+  });
 
   data.meta.itsmSmartProcess = {
     ...(data.meta.itsmSmartProcess || {}),

@@ -34,10 +34,10 @@ const nav = [
   ['/sync', 'Синхронизация', Database]
 ];
 
-const filterPages = new Set(['/', '/occupancy', '/time', '/projects', '/finance', '/tasks', '/employees']);
+const filterPages = new Set(['/', '/occupancy', '/time', '/projects', '/finance', '/tasks', '/itsm', '/employees']);
 
 const initialFilters = {
-  period: '90d',
+  period: '',
   startDate: '',
   endDate: '',
   project: '',
@@ -45,7 +45,10 @@ const initialFilters = {
   department: '',
   projectStatus: '',
   taskStatus: '',
-  query: ''
+  query: '',
+  itsmType: '',
+  itsmInitiator: '',
+  itsmAssignee: ''
 };
 
 export function Sidebar({ collapsed, setCollapsed, syncNow, syncing, status, theme, setTheme }) {
@@ -146,6 +149,10 @@ export function Topbar({ filters, setFilters, data }) {
   const location = useLocation();
   const showFilters = filterPages.has(location.pathname);
   const departments = [...new Set(data.users.map((user) => user.department).filter(Boolean))];
+  const isItsm = location.pathname === '/itsm';
+  const itsmTypes = uniqueOptions(data.itsmRequests || [], 'requestType');
+  const itsmInitiators = uniqueOptions(data.itsmRequests || [], 'initiator');
+  const itsmAssignees = uniqueOptions(data.itsmRequests || [], 'assignee');
   const setFilter = (patch) => setFilters({ ...filters, ...patch });
 
   if (!showFilters) return null;
@@ -159,15 +166,30 @@ export function Topbar({ filters, setFilters, data }) {
           endDate={filters.endDate}
           onChange={(patch) => setFilter(patch)}
         />
-        <Select value={filters.project} onChange={(project) => setFilter({ project })} placeholder="Все проекты" options={data.projects.map((project) => [project.id, project.name])} />
-        <Select value={filters.employee} onChange={(employee) => setFilter({ employee })} placeholder="Все сотрудники" options={data.users.map((user) => [user.id, user.name])} />
-        <Select value={filters.department} onChange={(department) => setFilter({ department })} placeholder="Все отделы" options={departments.map((department) => [department, department])} />
-        <Select value={filters.taskStatus} onChange={(taskStatus) => setFilter({ taskStatus })} placeholder="Статус задачи" options={[['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Выполненные']]} />
-        <SearchField value={filters.query} onChange={(query) => setFilter({ query })} />
+        {isItsm ? (
+          <>
+            <Select value={filters.itsmType} onChange={(itsmType) => setFilter({ itsmType })} placeholder={'\u0422\u0438\u043f \u0437\u0430\u044f\u0432\u043a\u0438'} options={itsmTypes} />
+            <Select value={filters.itsmInitiator} onChange={(itsmInitiator) => setFilter({ itsmInitiator })} placeholder={'\u0418\u043d\u0438\u0446\u0438\u0430\u0442\u043e\u0440'} options={itsmInitiators} />
+            <Select value={filters.itsmAssignee} onChange={(itsmAssignee) => setFilter({ itsmAssignee })} placeholder={'\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c'} options={itsmAssignees} />
+          </>
+        ) : (
+          <>
+            <Select value={filters.project} onChange={(project) => setFilter({ project })} placeholder="Все проекты" options={data.projects.map((project) => [project.id, project.name])} />
+            <Select value={filters.employee} onChange={(employee) => setFilter({ employee })} placeholder="Все сотрудники" options={data.users.map((user) => [user.id, user.name])} />
+            <Select value={filters.department} onChange={(department) => setFilter({ department })} placeholder="Все отделы" options={departments.map((department) => [department, department])} />
+            <Select value={filters.taskStatus} onChange={(taskStatus) => setFilter({ taskStatus })} placeholder="Статус задачи" options={[['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Выполненные']]} />
+            <SearchField value={filters.query} onChange={(query) => setFilter({ query })} />
+          </>
+        )}
         <button className="icon-btn" title="Сбросить фильтры" onClick={() => setFilters(initialFilters)}>
           <FilterX size={18} />
         </button>
       </div>
     </header>
   );
+}
+
+function uniqueOptions(rows, key) {
+  return [...new Set(rows.map((row) => row[key]).filter((value) => value !== null && value !== undefined && value !== ''))]
+    .map((value) => [String(value), String(value)]);
 }

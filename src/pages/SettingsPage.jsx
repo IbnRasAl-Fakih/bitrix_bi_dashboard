@@ -17,7 +17,18 @@ const defaultMapping = {
 
 const defaultItsmMapping = {
   smartProcessEntityTypeId: '1096',
-  smartProcessTitle: 'Заявки ITSM'
+  smartProcessTitle: 'Заявки ITSM',
+  requestNumberField: 'ufCrm36Id',
+  shortDescriptionField: 'ufCrm36ShortDescription',
+  fullDescriptionField: 'ufCrm36FullDescription',
+  requestTypeField: 'ufCrm36Type',
+  initiatorField: 'ufCrm36Initiator',
+  assigneeField: 'ufCrm36Executor',
+  solutionField: 'ufCrm36Solution',
+  registeredAtField: 'ufCrm36RegistrationDate',
+  completedAtField: 'ufCrm36ProcessingDate',
+  closedAtField: 'ufCrm36ClosedDate',
+  violatedField: 'ufCrm36Violated'
 };
 
 export default function SettingsPage({ status, syncNow, data }) {
@@ -105,6 +116,17 @@ export default function SettingsPage({ status, syncNow, data }) {
               <h3 className="mb-3 text-base font-bold">Заявки ITSM</h3>
               <SettingsInput label="Название смарт-таблицы ITSM" value={itsmMapping.smartProcessTitle} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessTitle: value })} />
               <SettingsInput label="ID смарт-таблицы ITSM" value={itsmMapping.smartProcessEntityTypeId} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessEntityTypeId: value })} />
+              <SettingsInput label="Поле номера заявки" value={itsmMapping.requestNumberField} onChange={(value) => setItsmMapping({ ...itsmMapping, requestNumberField: value })} />
+              <SettingsInput label="Поле краткого описания" value={itsmMapping.shortDescriptionField} onChange={(value) => setItsmMapping({ ...itsmMapping, shortDescriptionField: value })} />
+              <SettingsInput label="Поле полного описания" value={itsmMapping.fullDescriptionField} onChange={(value) => setItsmMapping({ ...itsmMapping, fullDescriptionField: value })} />
+              <SettingsInput label="Поле типа заявки" value={itsmMapping.requestTypeField} onChange={(value) => setItsmMapping({ ...itsmMapping, requestTypeField: value })} />
+              <SettingsInput label="Поле инициатора" value={itsmMapping.initiatorField} onChange={(value) => setItsmMapping({ ...itsmMapping, initiatorField: value })} />
+              <SettingsInput label="Поле исполнителя" value={itsmMapping.assigneeField} onChange={(value) => setItsmMapping({ ...itsmMapping, assigneeField: value })} />
+              <SettingsInput label="Поле решения" value={itsmMapping.solutionField} onChange={(value) => setItsmMapping({ ...itsmMapping, solutionField: value })} />
+              <SettingsInput label="Поле даты регистрации" value={itsmMapping.registeredAtField} onChange={(value) => setItsmMapping({ ...itsmMapping, registeredAtField: value })} />
+              <SettingsInput label="Поле даты выполнения" value={itsmMapping.completedAtField} onChange={(value) => setItsmMapping({ ...itsmMapping, completedAtField: value })} />
+              <SettingsInput label="Поле даты закрытия" value={itsmMapping.closedAtField} onChange={(value) => setItsmMapping({ ...itsmMapping, closedAtField: value })} />
+              <SettingsInput label="Поле нарушения" value={itsmMapping.violatedField} onChange={(value) => setItsmMapping({ ...itsmMapping, violatedField: value })} />
             </div>
             <button className="btn btn-primary mt-2" onClick={() => save()}>Сохранить настройки</button>
           </div>
