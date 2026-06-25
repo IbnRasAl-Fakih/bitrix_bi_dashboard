@@ -89,12 +89,14 @@ export function applyFilters(data, filters) {
   });
   const financeProjectNames = new Set(financeRecords.map((record) => record.projectName));
   const projects = data.projects.filter((project) => {
-    const selectedByTask = projectIds.has(project.id);
-    const selectedByFinance = financeProjectNames.has(project.name);
-    return (selectedByTask || selectedByFinance || (!tasks.length && !financeRecords.length && matchesProjectRange(project, range)))
-      && (!filters.project || project.id === filters.project)
+    const matchesQuery = !query
+      || JSON.stringify(project).toLowerCase().includes(query)
+      || projectIds.has(project.id)
+      || financeProjectNames.has(project.name);
+    return (!filters.project || project.id === filters.project)
       && (!filters.projectStatus || project.status === filters.projectStatus)
-      && (!query || JSON.stringify(project).toLowerCase().includes(query));
+      && matchesProjectRange(project, range)
+      && matchesQuery;
   });
   const users = data.users.filter((user) => {
     return (!filters.employee || user.id === filters.employee)
@@ -175,6 +177,7 @@ function matchesItsmRange(request, range) {
 
 function matchesProjectRange(project, range) {
   if (!range.start && !range.end) return true;
+  if (!project.startDate && !project.endDate) return true;
   return dateIntervalsOverlap(project.startDate, project.endDate, range);
 }
 
