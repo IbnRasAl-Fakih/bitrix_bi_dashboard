@@ -23,18 +23,18 @@ export default function TimePage({ data }) {
     return {
       hoursByEmployee: data.charts.hoursByEmployee.map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       hoursByDepartment: (data.charts.hoursByDepartment || []).map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       hoursTrend: data.charts.hoursTrend.map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       tasks: data.tasks.map((row) => ({
         ...row,
@@ -44,6 +44,7 @@ export default function TimePage({ data }) {
       }))
     };
   }, [data, isDays]);
+  const trendMetricName = view.hoursTrend.find((row) => row.metricName)?.metricName;
 
   return (
     <>
@@ -78,7 +79,7 @@ export default function TimePage({ data }) {
           <EmployeeBars data={view.hoursByDepartment} />
         </ChartCard>
         <ChartCard title={`Динамика ${unitLabel} по датам`} empty={!view.hoursTrend.length}>
-          <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} />
+          <LinePanel data={view.hoursTrend} first="hours" firstName={trendMetricName || (isDays ? 'Дни' : 'Часы')} />
         </ChartCard>
       </section>
       <DataTable title={`Рабочее время, ${unitSuffix}`} rows={view.tasks} columns={[
@@ -90,4 +91,8 @@ export default function TimePage({ data }) {
 
 function toDays(value) {
   return Math.round((Number(value || 0) / WORK_DAY_HOURS) * 10) / 10;
+}
+
+function toMetricDays(value, row) {
+  return row.metricKind === 'tasks' ? value : toDays(value);
 }

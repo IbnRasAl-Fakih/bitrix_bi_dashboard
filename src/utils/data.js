@@ -223,44 +223,56 @@ export function recalc(data) {
 
 function buildCharts(data) {
   const financeRecords = data.financeRecords || [];
+  const hasTime = data.tasks.some((task) => task.actualHours > 0 || task.closedHours > 0);
   return {
     ...data.charts,
-    hoursByEmployee: data.users
-      .filter((user) => user.actualHours || user.closedHours)
-      .map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load })),
-    hoursByDepartment: buildHoursByDepartment(data.users),
+    hoursByEmployee: hasTime
+      ? data.users
+        .filter((user) => user.actualHours || user.closedHours)
+        .map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load }))
+      : data.users
+        .filter((user) => user.tasks)
+        .map((user) => ({ name: user.name, hours: user.tasks, closed: user.closedTasks, load: user.load, metricKind: 'tasks', metricName: 'Задач' })),
+    hoursByDepartment: buildHoursByDepartment(data.users, !hasTime),
     hoursByProject: data.projects
-      .filter((project) => project.actualHours || project.plannedHours || project.closedHours)
-      .map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours })),
-    occupancyShare: data.projects
-      .filter((project) => project.actualHours > 0)
-      .map((project) => ({ name: project.name, value: project.actualHours })),
+      .filter((project) => project.actualHours || project.plannedHours || project.closedHours || (!hasTime && project.taskCount))
+      .map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours, taskCount: project.taskCount, metricKind: hasTime ? 'hours' : 'tasks' })),
+    occupancyShare: hasTime
+      ? data.projects
+        .filter((project) => project.actualHours > 0)
+        .map((project) => ({ name: project.name, value: project.actualHours }))
+      : data.projects
+        .filter((project) => project.taskCount > 0)
+        .map((project) => ({ name: project.name, value: project.taskCount, metricKind: 'tasks', metricName: 'Задач' })),
     financeByProject: data.projects
       .filter((project) => project.income !== null || project.expense !== null || project.profit !== null)
       .map((project) => ({ name: project.name, income: project.income || 0, expense: project.expense || 0, profit: project.profit || 0 })),
     financeTrend: buildFinanceTrend(financeRecords),
     taskTrend: buildTaskTrend(data.tasks),
-    hoursTrend: buildHoursTrend(data.tasks),
+    hoursTrend: hasTime ? buildHoursTrend(data.tasks) : buildTaskVolumeTrend(data.tasks),
     stackedHours: data.projects.map((project) => {
       const row = { name: project.name };
       data.assignments
-        .filter((assignment) => assignment.project === project.name && assignment.actualHours > 0)
-        .forEach((assignment) => { row[assignment.employee] = assignment.actualHours; });
+        .filter((assignment) => assignment.project === project.name && (hasTime ? assignment.actualHours > 0 : assignment.taskCount > 0))
+        .forEach((assignment) => { row[assignment.employee] = hasTime ? assignment.actualHours : assignment.taskCount; });
+      if (!hasTime) row.metricKind = 'tasks';
       return row;
     }).filter((row) => Object.keys(row).length > 1),
     expenseStructure: buildExpenseStructure(financeRecords)
   };
 }
 
-function buildHoursByDepartment(users) {
+function buildHoursByDepartment(users, useTaskCount = false) {
   const grouped = new Map();
   users.forEach((user) => {
     const name = user.department || 'Не указан';
-    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0 };
-    current.hours += user.actualHours || 0;
-    current.closed += user.closedHours || 0;
+    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0, taskCount: 0, closedTasks: 0 };
+    current.hours += useTaskCount ? user.tasks || 0 : user.actualHours || 0;
+    current.closed += useTaskCount ? user.closedTasks || 0 : user.closedHours || 0;
     current.loadTotal += user.load || 0;
     current.employees += 1;
+    current.taskCount += user.tasks || 0;
+    current.closedTasks += user.closedTasks || 0;
     grouped.set(name, current);
   });
   return [...grouped.values()]
@@ -269,7 +281,11 @@ function buildHoursByDepartment(users) {
       hours: Math.round(row.hours * 10) / 10,
       closed: Math.round(row.closed * 10) / 10,
       load: Math.round(row.loadTotal / Math.max(row.employees, 1)),
-      employees: row.employees
+      employees: row.employees,
+      taskCount: row.taskCount,
+      closedTasks: row.closedTasks,
+      metricKind: useTaskCount ? 'tasks' : 'hours',
+      metricName: useTaskCount ? 'Задач' : undefined
     }))
     .filter((row) => row.hours || row.closed || row.employees)
     .sort((a, b) => b.hours - a.hours);
@@ -335,6 +351,18 @@ function buildHoursTrend(tasks) {
     .map((row) => ({ ...row, hours: Math.round(row.hours * 10) / 10, closed: Math.round(row.closed * 10) / 10 }))
     .filter((row) => row.hours || row.closed)
     .slice(-12);
+}
+
+function buildTaskVolumeTrend(tasks) {
+  return buildTaskTrend(tasks)
+    .map((row) => ({
+      ...row,
+      hours: row.created || 0,
+      closed: row.closed || 0,
+      metricKind: 'tasks',
+      metricName: 'Задач'
+    }))
+    .filter((row) => row.hours || row.closed);
 }
 
 function monthLabel(value) {

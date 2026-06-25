@@ -76,6 +76,7 @@ function ChartTooltip({ active, payload, label, formatter = shortNumber }) {
 }
 
 export function EmployeeBars({ data, onClick, showLegend = true }) {
+  const metricName = data.find((row) => row.metricName)?.metricName || 'Факт';
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 18, left: 4, bottom: 30 }} onClick={(event) => event?.activePayload?.[0] && onClick?.(event.activePayload[0].payload)}>
@@ -84,7 +85,7 @@ export function EmployeeBars({ data, onClick, showLegend = true }) {
         <YAxis tick={axisTick} tickFormatter={shortNumber} width={48} />
         <Tooltip cursor={tooltipCursor} content={<ChartTooltip />} />
         {showLegend && <Legend wrapperStyle={legendStyle} />}
-        <Bar dataKey="hours" name="Факт" fill="#1d70f7" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="hours" name={metricName} fill="#1d70f7" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

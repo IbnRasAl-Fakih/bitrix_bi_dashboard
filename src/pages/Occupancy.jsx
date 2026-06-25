@@ -25,23 +25,23 @@ export default function Occupancy({ data, filters, setFilters }) {
     return {
       hoursByEmployee: data.charts.hoursByEmployee.map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       hoursByDepartment: (data.charts.hoursByDepartment || []).map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       stackedHours: data.charts.stackedHours.map((row) => convertDynamicHours(row, data.users.map((user) => user.name))),
       occupancyShare: data.charts.occupancyShare.map((row) => ({
         ...row,
-        value: toDays(row.value)
+        value: toMetricDays(row.value, row)
       })),
       hoursTrend: data.charts.hoursTrend.map((row) => ({
         ...row,
-        hours: toDays(row.hours),
-        closed: toDays(row.closed)
+        hours: toMetricDays(row.hours, row),
+        closed: toMetricDays(row.closed, row)
       })),
       assignments: data.assignments.map((row) => ({
         ...row,
@@ -51,6 +51,7 @@ export default function Occupancy({ data, filters, setFilters }) {
       }))
     };
   }, [data, isDays]);
+  const trendMetricName = view.hoursTrend.find((row) => row.metricName)?.metricName;
 
   return (
     <>
@@ -86,7 +87,7 @@ export default function Occupancy({ data, filters, setFilters }) {
           <Donut data={view.occupancyShare} />
         </ChartCard>
         <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}>
-          <LinePanel data={view.hoursTrend} first="hours" firstName={isDays ? 'Дни' : 'Часы'} />
+          <LinePanel data={view.hoursTrend} first="hours" firstName={trendMetricName || (isDays ? 'Дни' : 'Часы')} />
         </ChartCard>
       </section>
       <Matrix rows={view.assignments} unit={unit} />
@@ -100,11 +101,15 @@ export default function Occupancy({ data, filters, setFilters }) {
 
 function convertDynamicHours(row, keys) {
   return keys.reduce((acc, key) => {
-    acc[key] = toDays(row[key]);
+    acc[key] = row.metricKind === 'tasks' ? row[key] : toDays(row[key]);
     return acc;
   }, { ...row });
 }
 
 function toDays(value) {
   return Math.round((Number(value || 0) / WORK_DAY_HOURS) * 10) / 10;
+}
+
+function toMetricDays(value, row) {
+  return row.metricKind === 'tasks' ? value : toDays(value);
 }

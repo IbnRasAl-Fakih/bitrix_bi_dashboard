@@ -4,6 +4,8 @@ function n(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const NO_PROJECT_ID = '__no_project__';
+
 function text(...values) {
   return values.filter(Boolean).join(' ').trim();
 }
@@ -301,6 +303,8 @@ export function normalizeBitrixData(raw, settings) {
     const plannedSeconds = n(task.TIME_ESTIMATE ?? task.timeEstimate);
     const actualSeconds = n(task.TIME_SPENT_IN_LOGS ?? task.timeSpentInLogs ?? task.timeSpent);
     const deadline = dateOrNull(task.DEADLINE ?? task.deadline);
+    const rawProjectId = String(task.GROUP_ID ?? task.groupId ?? '');
+    const projectId = rawProjectId && rawProjectId !== '0' ? rawProjectId : NO_PROJECT_ID;
     const customFields = Object.fromEntries(Object.entries(task || {})
       .filter(([key]) => /^uf/i.test(key))
       .map(([key, value]) => [key, tableCellValue(value)]));
@@ -308,7 +312,7 @@ export function normalizeBitrixData(raw, settings) {
       ...customFields,
       id: String(task.ID ?? task.id ?? index + 1),
       title: task.TITLE || task.title || `Задача ${task.ID ?? task.id ?? index + 1}`,
-      projectId: String(task.GROUP_ID ?? task.groupId ?? ''),
+      projectId,
       parentId: String(task.PARENT_ID ?? task.parentId ?? ''),
       responsibleId: String(task.RESPONSIBLE_ID ?? task.responsibleId ?? ''),
       creatorId: String(task.CREATED_BY ?? task.createdBy ?? ''),
@@ -340,7 +344,7 @@ export function normalizeBitrixData(raw, settings) {
   const financeRecords = parseFinanceRecords(raw.financeItems || [], financeSettings);
   const itsmRequests = buildItsmRequestsFromTasks(taskRows, users, baseProjects, settings.itsmMapping || {});
   const financeByProject = aggregateFinanceByProject(financeRecords);
-  const projects = mergeFinanceProjects(baseProjects, financeByProject);
+  const projects = ensureTaskProjects(mergeFinanceProjects(baseProjects, financeByProject), taskRows);
   const hasIncome = financeRecords.some((record) => record.kind === 'income');
   const hasExpense = financeRecords.some((record) => record.kind === 'expense');
 
@@ -487,6 +491,28 @@ function mergeFinanceProjects(projects, financeByProject) {
   return result;
 }
 
+function ensureTaskProjects(projects, tasks) {
+  const projectIds = new Set(projects.map((project) => project.id));
+  const missingProjectIds = [...new Set(tasks.map((task) => task.projectId).filter(Boolean))]
+    .filter((projectId) => !projectIds.has(projectId));
+
+  if (!missingProjectIds.length) return projects;
+
+  return [
+    ...projects,
+    ...missingProjectIds.map((projectId) => ({
+      id: projectId,
+      name: projectId === NO_PROJECT_ID ? 'Без проекта' : `Проект ${projectId}`,
+      status: 'active',
+      responsibleId: '',
+      startDate: null,
+      endDate: null,
+      tags: [],
+      source: 'tasks'
+    }))
+  ];
+}
+
 function assembleAnalytics(users, projects, tasks, financeByProject, financeRecords, warnings, itsmRequests = []) {
   const userById = new Map(users.map((user) => [user.id, user]));
   const projectById = new Map(projects.map((project) => [project.id, project]));
@@ -624,33 +650,45 @@ function buildAssignments(users, projects, tasks) {
 }
 
 function buildCharts(projects, users, assignments, tasks, financeRecords) {
+  const hasTime = tasks.some((task) => task.actualHours > 0 || task.closedHours > 0);
   return {
-    hoursByEmployee: users.filter((user) => user.actualHours || user.closedHours).map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load })),
-    hoursByDepartment: buildHoursByDepartment(users),
-    hoursByProject: projects.filter((project) => project.actualHours || project.plannedHours || project.closedHours).map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours })),
-    occupancyShare: projects.filter((project) => project.actualHours > 0).map((project) => ({ name: project.name, value: project.actualHours })),
+    hoursByEmployee: hasTime
+      ? users.filter((user) => user.actualHours || user.closedHours).map((user) => ({ name: user.name, hours: user.actualHours, closed: user.closedHours, load: user.load }))
+      : users.filter((user) => user.tasks).map((user) => ({ name: user.name, hours: user.tasks, closed: user.closedTasks, load: user.load, metricKind: 'tasks', metricName: 'Задач' })),
+    hoursByDepartment: buildHoursByDepartment(users, !hasTime),
+    hoursByProject: projects
+      .filter((project) => project.actualHours || project.plannedHours || project.closedHours || (!hasTime && project.taskCount))
+      .map((project) => ({ name: project.name, planned: project.plannedHours, actual: project.actualHours, closed: project.closedHours, taskCount: project.taskCount, metricKind: hasTime ? 'hours' : 'tasks' })),
+    occupancyShare: hasTime
+      ? projects.filter((project) => project.actualHours > 0).map((project) => ({ name: project.name, value: project.actualHours }))
+      : projects.filter((project) => project.taskCount > 0).map((project) => ({ name: project.name, value: project.taskCount, metricKind: 'tasks', metricName: 'Задач' })),
     financeByProject: projects.filter((project) => project.income !== null || project.expense !== null || project.profit !== null).map((project) => ({ name: project.name, income: project.income || 0, expense: project.expense || 0, profit: project.profit || 0 })),
     financeTrend: buildFinanceTrend(financeRecords),
     taskTrend: buildTaskTrend(tasks),
-    hoursTrend: buildHoursTrend(tasks),
+    hoursTrend: hasTime ? buildHoursTrend(tasks) : buildTaskVolumeTrend(tasks),
     stackedHours: projects.map((project) => {
       const row = { name: project.name };
-      assignments.filter((assignment) => assignment.project === project.name && assignment.actualHours > 0).forEach((assignment) => { row[assignment.employee] = assignment.actualHours; });
+      assignments
+        .filter((assignment) => assignment.project === project.name && (hasTime ? assignment.actualHours > 0 : assignment.taskCount > 0))
+        .forEach((assignment) => { row[assignment.employee] = hasTime ? assignment.actualHours : assignment.taskCount; });
+      if (!hasTime) row.metricKind = 'tasks';
       return row;
     }).filter((row) => Object.keys(row).length > 1),
     expenseStructure: buildExpenseStructure(financeRecords)
   };
 }
 
-function buildHoursByDepartment(users) {
+function buildHoursByDepartment(users, useTaskCount = false) {
   const grouped = new Map();
   users.forEach((user) => {
     const name = user.department || 'Не указан';
-    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0 };
-    current.hours += user.actualHours || 0;
-    current.closed += user.closedHours || 0;
+    const current = grouped.get(name) || { name, hours: 0, closed: 0, loadTotal: 0, employees: 0, taskCount: 0, closedTasks: 0 };
+    current.hours += useTaskCount ? user.tasks || 0 : user.actualHours || 0;
+    current.closed += useTaskCount ? user.closedTasks || 0 : user.closedHours || 0;
     current.loadTotal += user.load || 0;
     current.employees += 1;
+    current.taskCount += user.tasks || 0;
+    current.closedTasks += user.closedTasks || 0;
     grouped.set(name, current);
   });
   return [...grouped.values()]
@@ -659,7 +697,11 @@ function buildHoursByDepartment(users) {
       hours: round(row.hours),
       closed: round(row.closed),
       load: Math.round(row.loadTotal / Math.max(row.employees, 1)),
-      employees: row.employees
+      employees: row.employees,
+      taskCount: row.taskCount,
+      closedTasks: row.closedTasks,
+      metricKind: useTaskCount ? 'tasks' : 'hours',
+      metricName: useTaskCount ? 'Задач' : undefined
     }))
     .filter((row) => row.hours || row.closed || row.employees)
     .sort((a, b) => b.hours - a.hours);
@@ -719,6 +761,18 @@ function buildHoursTrend(tasks) {
     grouped.set(month, current);
   });
   return [...grouped.values()].map((row) => ({ ...row, hours: round(row.hours), closed: round(row.closed) })).filter((row) => row.hours || row.closed).slice(-12);
+}
+
+function buildTaskVolumeTrend(tasks) {
+  return buildTaskTrend(tasks)
+    .map((row) => ({
+      ...row,
+      hours: row.created || 0,
+      closed: row.closed || 0,
+      metricKind: 'tasks',
+      metricName: 'Задач'
+    }))
+    .filter((row) => row.hours || row.closed);
 }
 
 function emptyKpis() {

@@ -397,13 +397,16 @@ export function Matrix({ rows, unit = 'hours' }) {
   const opacityBase = isDays ? 4.4 : 35;
   const matrixValues = useMemo(() => {
     return rows.reduce((acc, row) => {
-      acc.set(`${row.employee}\u0000${row.project}`, row.actualHours || 0);
+      acc.set(`${row.employee}\u0000${row.project}`, {
+        value: row.actualHours || 0,
+        hasTasks: (row.taskCount || 0) > 0
+      });
       return acc;
     }, new Map());
   }, [rows]);
 
-  function getValue(employee, project) {
-    return matrixValues.get(`${employee}\u0000${project}`) || 0;
+  function getCell(employee, project) {
+    return matrixValues.get(`${employee}\u0000${project}`) || { value: 0, hasTasks: false };
   }
 
   async function exportExcel() {
@@ -412,7 +415,10 @@ export function Matrix({ rows, unit = 'hours' }) {
       header,
       ...employees.map((employee) => [
         employee,
-        ...projects.map((project) => getValue(employee, project))
+        ...projects.map((project) => {
+          const cell = getCell(employee, project);
+          return cell.hasTasks || cell.value ? cell.value : null;
+        })
       ])
     ];
     const workbook = new ExcelJS.Workbook();
@@ -453,9 +459,9 @@ export function Matrix({ rows, unit = 'hours' }) {
           return;
         }
 
-        const value = Number(cell.value || 0);
+        const value = cell.value === null || cell.value === undefined ? null : Number(cell.value || 0);
         cell.numFmt = '0.0';
-        cell.font = { color: { argb: value ? '0F172A' : '94A3B8' } };
+        cell.font = { color: { argb: value !== null ? '0F172A' : '94A3B8' } };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -493,14 +499,16 @@ export function Matrix({ rows, unit = 'hours' }) {
             <Fragment key={employee}>
               <div className="sticky left-0 z-10 flex h-10 items-center border-b border-r border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">{employee}</div>
               {projects.map((project) => {
-                const value = getValue(employee, project);
+                const cell = getCell(employee, project);
+                const value = cell.value;
+                const hasData = cell.hasTasks || value > 0;
                 return (
                   <div
                     className="flex h-10 items-center justify-center border-b border-r border-white bg-brand-500 px-3 text-center text-xs font-bold text-white dark:border-slate-900"
                     key={`${employee}-${project}`}
                     style={{ opacity: Math.max(0.18, Math.min(1, value / opacityBase)) }}
                   >
-                    {value ? `${value} ${suffix}` : '-'}
+                    {hasData ? `${value} ${suffix}` : '-'}
                   </div>
                 );
               })}
