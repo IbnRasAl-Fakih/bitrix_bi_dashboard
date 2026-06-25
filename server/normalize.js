@@ -24,7 +24,7 @@ function stringTags(value) {
   if (!value) return [];
   const values = Array.isArray(value) ? value : typeof value === 'object' ? Object.values(value) : String(value).split(',');
   return [...new Set(values
-    .map((item) => String(item?.name ?? item?.NAME ?? item?.value ?? item?.VALUE ?? item).trim())
+    .map((item) => String(item?.title ?? item?.TITLE ?? item?.name ?? item?.NAME ?? item?.value ?? item?.VALUE ?? item).trim())
     .filter(Boolean))];
 }
 
@@ -127,6 +127,71 @@ function booleanValue(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return false;
   return ['y', 'yes', 'true', '1', 'да', 'нарушено'].includes(normalized);
+}
+
+function tagLabel(value) {
+  return String((value?.title ?? value?.TITLE ?? value?.name ?? value?.NAME ?? value?.value ?? value?.VALUE ?? value) || '').trim();
+}
+
+function normalizedTag(value) {
+  return tagLabel(value).toLowerCase().replace(/\s+/g, ' ');
+}
+
+function taskHasTag(task, expectedTag) {
+  const tag = String(expectedTag || '\u0437\u0430\u044f\u0432\u043a\u0430 itsm').trim().toLowerCase().replace(/\s+/g, ' ');
+  return (task.tags || []).some((item) => normalizedTag(item) === tag);
+}
+
+function itsmStatusLabel(status) {
+  if (status === 'closed') return '\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430';
+  if (status === 'progress') return '\u0412 \u0440\u0430\u0431\u043e\u0442\u0435';
+  return '\u041e\u0442\u043a\u0440\u044b\u0442\u0430';
+}
+
+function buildItsmRequestsFromTasks(tasks, users = [], projects = [], settings = {}) {
+  const userById = new Map((users || []).map((user) => [String(user.id), user.name]));
+  const projectById = new Map((projects || []).map((project) => [String(project.id), project.name]));
+  const tag = settings.tag || '\u0437\u0430\u044f\u0432\u043a\u0430 itsm';
+
+  return (tasks || [])
+    .filter((task) => taskHasTag(task, tag))
+    .map((task) => {
+      const row = { ...task };
+      const typeTag = (task.tags || []).map(tagLabel).find((item) => item && normalizedTag(item) !== normalizedTag(tag));
+      const requestNumber = firstValue(row, [settings.requestNumberField].filter(Boolean));
+      const shortDescription = firstValue(row, [settings.shortDescriptionField].filter(Boolean)) || task.title;
+      const fullDescription = firstValue(row, [settings.fullDescriptionField].filter(Boolean)) || task.description;
+      const requestType = firstValue(row, [settings.requestTypeField].filter(Boolean)) || typeTag || itsmStatusLabel(task.status);
+      const rawInitiator = firstValue(row, [settings.initiatorField].filter(Boolean));
+      const rawAssignee = firstValue(row, [settings.assigneeField].filter(Boolean));
+      const solution = firstValue(row, [settings.solutionField].filter(Boolean)) || (task.status === 'closed' ? itsmStatusLabel(task.status) : '');
+      const registeredAt = dateOrNull(firstValue(row, [settings.registeredAtField].filter(Boolean))) || task.createdAt;
+      const completedAt = dateOrNull(firstValue(row, [settings.completedAtField].filter(Boolean))) || task.closedAt;
+      const closedAt = dateOrNull(firstValue(row, [settings.closedAtField].filter(Boolean))) || task.closedAt;
+      const violated = firstValue(row, [settings.violatedField].filter(Boolean));
+      return {
+        id: `task:${task.id}`,
+        taskId: task.id,
+        requestNumber,
+        shortDescription,
+        fullDescription,
+        requestType,
+        initiator: rawInitiator || userById.get(String(task.creatorId)) || '\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d',
+        initiatorId: task.creatorId,
+        assignee: rawAssignee || userById.get(String(task.responsibleId)) || '\u041d\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d',
+        assigneeId: task.responsibleId,
+        solution,
+        registeredAt,
+        completedAt,
+        closedAt,
+        violated: violated === '' ? task.overdue : booleanValue(violated),
+        project: projectById.get(String(task.projectId)) || '',
+        projectId: task.projectId,
+        deadline: task.deadline,
+        status: task.status,
+        source: 'task'
+      };
+    });
 }
 
 function buildDepartmentMap(departments) {
@@ -236,7 +301,11 @@ export function normalizeBitrixData(raw, settings) {
     const plannedSeconds = n(task.TIME_ESTIMATE ?? task.timeEstimate);
     const actualSeconds = n(task.TIME_SPENT_IN_LOGS ?? task.timeSpentInLogs ?? task.timeSpent);
     const deadline = dateOrNull(task.DEADLINE ?? task.deadline);
+    const customFields = Object.fromEntries(Object.entries(task || {})
+      .filter(([key]) => /^uf/i.test(key))
+      .map(([key, value]) => [key, tableCellValue(value)]));
     return {
+      ...customFields,
       id: String(task.ID ?? task.id ?? index + 1),
       title: task.TITLE || task.title || `Задача ${task.ID ?? task.id ?? index + 1}`,
       projectId: String(task.GROUP_ID ?? task.groupId ?? ''),
@@ -254,7 +323,7 @@ export function normalizeBitrixData(raw, settings) {
       endDatePlan: dateOrNull(task.END_DATE_PLAN ?? task.endDatePlan),
       accompliceIds: stringIds(task.ACCOMPLICES ?? task.accomplices),
       auditorIds: stringIds(task.AUDITORS ?? task.auditors),
-      tags: Array.isArray(task.TAGS ?? task.tags) ? (task.TAGS ?? task.tags) : [],
+      tags: stringTags(task.TAGS ?? task.tags),
       relatedTaskIds: stringIds([
         ...stringIds(task.RELATED_TASKS ?? task.relatedTasks ?? task.DEPENDS_ON ?? task.dependsOn),
         ...(raw.taskRelations?.relations?.[String(task.ID ?? task.id ?? index + 1)] || [])
@@ -269,7 +338,7 @@ export function normalizeBitrixData(raw, settings) {
   });
 
   const financeRecords = parseFinanceRecords(raw.financeItems || [], financeSettings);
-  const itsmRequests = parseGenericSmartRows(raw.itsmItems || [], settings.itsmMapping || {}, users, raw.itsmFields);
+  const itsmRequests = buildItsmRequestsFromTasks(taskRows, users, baseProjects, settings.itsmMapping || {});
   const financeByProject = aggregateFinanceByProject(financeRecords);
   const projects = mergeFinanceProjects(baseProjects, financeByProject);
   const hasIncome = financeRecords.some((record) => record.kind === 'income');
@@ -300,7 +369,8 @@ export function normalizeBitrixData(raw, settings) {
     amountField: financeSettings.smartAmountField
   };
   data.meta.itsmSmartProcess = {
-    entityTypeId: raw.itsmEntityTypeId || settings.itsmMapping?.smartProcessEntityTypeId || '1096',
+    source: 'tasks',
+    tag: settings.itsmMapping?.tag || '\u0437\u0430\u044f\u0432\u043a\u0430 itsm',
     records: itsmRequests.length,
     title: settings.itsmMapping?.smartProcessTitle || 'Заявки ITSM'
   };

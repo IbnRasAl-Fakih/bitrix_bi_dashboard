@@ -43,19 +43,20 @@ const state = {
       smartExpenseMarkers: ['CoGS', 'Расход', 'Затрат']
     },
     itsmMapping: {
+      tag: '\u0437\u0430\u044f\u0432\u043a\u0430 itsm',
       smartProcessEntityTypeId: '1096',
       smartProcessTitle: 'Заявки ITSM',
-      requestNumberField: 'ufCrm36Id',
-      shortDescriptionField: 'ufCrm36ShortDescription',
-      fullDescriptionField: 'ufCrm36FullDescription',
-      requestTypeField: 'ufCrm36Type',
-      initiatorField: 'ufCrm36Initiator',
-      assigneeField: 'ufCrm36Executor',
-      solutionField: 'ufCrm36Solution',
-      registeredAtField: 'ufCrm36RegistrationDate',
-      completedAtField: 'ufCrm36ProcessingDate',
-      closedAtField: 'ufCrm36ClosedDate',
-      violatedField: 'ufCrm36Violated'
+      requestNumberField: 'ufAuto885369673643',
+      shortDescriptionField: 'ufAuto191392845151',
+      fullDescriptionField: 'ufAuto447780473544',
+      requestTypeField: 'ufAuto468913797382',
+      initiatorField: 'ufAuto661205472288',
+      assigneeField: 'ufAuto535616254121',
+      solutionField: 'ufAuto308729817905',
+      registeredAtField: 'ufAuto608394397253',
+      completedAtField: 'ufAuto144419585953',
+      closedAtField: 'ufAuto107537441376',
+      violatedField: 'ufAuto222164407847'
     },
     visibleKpis: [
       'activeProjects', 'completedProjects', 'employees', 'tasks', 'openTasks', 'closedTasks',
@@ -182,6 +183,51 @@ function relationIds(value, sourceTaskId) {
   return [...new Set(ids.filter((id) => id !== '0' && id !== String(sourceTaskId)))];
 }
 
+function mergeTaskSources(primaryTasks = [], taggedTasks = []) {
+  const byId = new Map();
+  primaryTasks.forEach((task) => {
+    const id = String(task.ID ?? task.id ?? '');
+    if (id) byId.set(id, task);
+  });
+  taggedTasks.forEach((task) => {
+    const id = String(task.ID ?? task.id ?? '');
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...task });
+  });
+  return [...byId.values()];
+}
+
+async function fetchWebhookTasks() {
+  if (!BITRIX_WEBHOOK_URL) return { items: [], warnings: [] };
+  const warnings = [];
+  const items = [];
+  let start = 0;
+
+  try {
+    while (items.length < 1000 && start !== null && start !== undefined) {
+      const result = await bitrixWebhookFetch('tasks.task.list', {
+        order: { ID: 'DESC' },
+        select: [
+          'ID', 'TITLE', 'DESCRIPTION', 'TAGS', 'TAG', 'UF_*', 'GROUP_ID', 'PARENT_ID',
+          'CREATED_BY', 'RESPONSIBLE_ID', 'ACCOMPLICES', 'AUDITORS', 'STATUS',
+          'PRIORITY', 'DEADLINE', 'CREATED_DATE', 'CLOSED_DATE', 'ACTIVITY_DATE',
+          'CHANGED_DATE', 'START_DATE_PLAN', 'END_DATE_PLAN', 'TIME_ESTIMATE',
+          'TIME_SPENT_IN_LOGS', 'URL'
+        ],
+        start
+      });
+      const tasks = result?.tasks || result?.items || [];
+      items.push(...tasks);
+      start = Number.isFinite(Number(result?.next)) ? Number(result.next) : null;
+      if (!tasks.length) break;
+    }
+  } catch (error) {
+    warnings.push(`Bitrix task tags unavailable: ${sanitize(error.message)}`);
+  }
+
+  return { items: items.slice(0, 1000), warnings };
+}
+
 async function fetchFinanceSmartProcessItems(settings) {
   const warnings = [];
   try {
@@ -246,41 +292,40 @@ async function syncFromBitrix() {
   logSync('info', 'Запущена синхронизация данных');
 
   try {
-    const [me, users, tasks, workgroups, deals, financeSmart, itsmSmart, departments] = await Promise.allSettled([
+    const [me, users, tasks, webhookTasks, workgroups, deals, financeSmart, departments] = await Promise.allSettled([
       vibeFetch('/me'),
       fetchEntity('users', { limit: 500 }),
       fetchEntity('tasks', { limit: 1000 }),
+      fetchWebhookTasks(),
       fetchEntity('workgroups', { limit: 500 }),
       fetchEntity('deals', { limit: 1000 }),
       fetchFinanceSmartProcessItems(state.settings),
-      fetchItsmSmartProcessItems(state.settings),
       fetchDepartments()
     ]);
 
     if (me.status === 'rejected') throw me.reason;
 
-    const errors = [users, tasks, workgroups, deals, financeSmart, itsmSmart, departments]
+    const errors = [users, tasks, webhookTasks, workgroups, deals, financeSmart, departments]
       .filter((result) => result.status === 'rejected')
       .map((result) => result.reason.message);
 
     if (financeSmart.status === 'fulfilled') {
       errors.push(...financeSmart.value.warnings);
     }
-    if (itsmSmart.status === 'fulfilled') {
-      errors.push(...itsmSmart.value.warnings);
+    if (webhookTasks.status === 'fulfilled') {
+      errors.push(...webhookTasks.value.warnings);
     }
-
     const raw = {
       me: me.value.data,
       users: users.status === 'fulfilled' ? users.value.data || [] : [],
-      tasks: tasks.status === 'fulfilled' ? tasks.value.data || [] : [],
+      tasks: mergeTaskSources(
+        tasks.status === 'fulfilled' ? tasks.value.data || [] : [],
+        webhookTasks.status === 'fulfilled' ? webhookTasks.value.items || [] : []
+      ),
       workgroups: workgroups.status === 'fulfilled' ? workgroups.value.data || [] : [],
       deals: deals.status === 'fulfilled' ? deals.value.data || [] : [],
       financeItems: financeSmart.status === 'fulfilled' ? financeSmart.value.items || [] : [],
       financeEntityTypeId: financeSmart.status === 'fulfilled' ? financeSmart.value.entityTypeId : null,
-      itsmItems: itsmSmart.status === 'fulfilled' ? itsmSmart.value.items || [] : [],
-      itsmFields: itsmSmart.status === 'fulfilled' ? itsmSmart.value.fields || null : null,
-      itsmEntityTypeId: itsmSmart.status === 'fulfilled' ? itsmSmart.value.entityTypeId : null,
       departments: departments.status === 'fulfilled' ? departments.value || [] : [],
       errors
     };

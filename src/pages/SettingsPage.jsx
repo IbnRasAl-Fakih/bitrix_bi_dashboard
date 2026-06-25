@@ -16,19 +16,20 @@ const defaultMapping = {
 };
 
 const defaultItsmMapping = {
+  tag: '\u0437\u0430\u044f\u0432\u043a\u0430 itsm',
   smartProcessEntityTypeId: '1096',
   smartProcessTitle: 'Заявки ITSM',
-  requestNumberField: 'ufCrm36Id',
-  shortDescriptionField: 'ufCrm36ShortDescription',
-  fullDescriptionField: 'ufCrm36FullDescription',
-  requestTypeField: 'ufCrm36Type',
-  initiatorField: 'ufCrm36Initiator',
-  assigneeField: 'ufCrm36Executor',
-  solutionField: 'ufCrm36Solution',
-  registeredAtField: 'ufCrm36RegistrationDate',
-  completedAtField: 'ufCrm36ProcessingDate',
-  closedAtField: 'ufCrm36ClosedDate',
-  violatedField: 'ufCrm36Violated'
+  requestNumberField: 'ufAuto885369673643',
+  shortDescriptionField: 'ufAuto191392845151',
+  fullDescriptionField: 'ufAuto447780473544',
+  requestTypeField: 'ufAuto468913797382',
+  initiatorField: 'ufAuto661205472288',
+  assigneeField: 'ufAuto535616254121',
+  solutionField: 'ufAuto308729817905',
+  registeredAtField: 'ufAuto608394397253',
+  completedAtField: 'ufAuto144419585953',
+  closedAtField: 'ufAuto107537441376',
+  violatedField: 'ufAuto222164407847'
 };
 
 export default function SettingsPage({ status, syncNow, data }) {
@@ -89,7 +90,7 @@ export default function SettingsPage({ status, syncNow, data }) {
               <p>Последняя синхронизация: {status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString('ru-RU') : 'нет'}</p>
               <p>Смарт-процесс финансов: {data.meta.financeSmartProcess?.entityTypeId || mapping.smartProcessEntityTypeId || 'не найден'}</p>
               <p>Финансовых строк: {data.meta.financeSmartProcess?.records ?? 0}</p>
-              <p>Смарт-таблица ITSM: {data.meta.itsmSmartProcess?.entityTypeId || itsmMapping.smartProcessEntityTypeId || 1096}</p>
+              <p>ITSM: задачи с тегом {data.meta.itsmSmartProcess?.tag || itsmMapping.tag || '\u0437\u0430\u044f\u0432\u043a\u0430 itsm'}</p>
               <p>Заявок ITSM: {data.meta.itsmSmartProcess?.records ?? 0}</p>
               <p>Связанные задачи: {data.meta.taskRelations?.available ? `${data.meta.taskRelations.count} связей получено` : 'нужен BITRIX_WEBHOOK_URL'}</p>
             </div>
@@ -114,6 +115,7 @@ export default function SettingsPage({ status, syncNow, data }) {
             <SettingsInput label="Поле статьи расходов/доходов" value={mapping.smartArticleField} onChange={(value) => setMapping({ ...mapping, smartArticleField: value })} />
             <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
               <h3 className="mb-3 text-base font-bold">Заявки ITSM</h3>
+              <SettingsInput label="Тег ITSM-задачи" value={itsmMapping.tag} onChange={(value) => setItsmMapping({ ...itsmMapping, tag: value })} />
               <SettingsInput label="Название смарт-таблицы ITSM" value={itsmMapping.smartProcessTitle} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessTitle: value })} />
               <SettingsInput label="ID смарт-таблицы ITSM" value={itsmMapping.smartProcessEntityTypeId} onChange={(value) => setItsmMapping({ ...itsmMapping, smartProcessEntityTypeId: value })} />
               <SettingsInput label="Поле номера заявки" value={itsmMapping.requestNumberField} onChange={(value) => setItsmMapping({ ...itsmMapping, requestNumberField: value })} />
