@@ -8,12 +8,25 @@ export default function Dropdown({
   placeholder = 'Все',
   icon,
   searchable = true,
+  multiple = false,
   className = ''
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const ref = useRef(null);
-  const selected = options.find(([optionValue]) => optionValue === value);
+  const selectedValues = useMemo(() => {
+    if (!multiple) return value ? [value] : [];
+    return Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
+  }, [multiple, value]);
+  const selectedValueSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+  const selectedOptions = useMemo(
+    () => options.filter(([optionValue]) => selectedValueSet.has(optionValue)),
+    [options, selectedValueSet]
+  );
+  const selected = selectedOptions[0];
+  const label = multiple
+    ? formatMultipleLabel(selectedOptions, placeholder)
+    : selected?.[1] || placeholder;
 
   const filtered = useMemo(() => {
     const normalized = query.toLowerCase();
@@ -38,8 +51,22 @@ export default function Dropdown({
   }, []);
 
   function choose(nextValue) {
+    if (multiple) {
+      const nextValues = selectedValueSet.has(nextValue)
+        ? selectedValues.filter((currentValue) => currentValue !== nextValue)
+        : [...selectedValues, nextValue];
+      onChange(nextValues);
+      return;
+    }
+
     onChange(nextValue);
     setOpen(false);
+    setQuery('');
+  }
+
+  function clear() {
+    onChange(multiple ? [] : '');
+    if (!multiple) setOpen(false);
     setQuery('');
   }
 
@@ -55,8 +82,8 @@ export default function Dropdown({
         onClick={() => setOpen((current) => !current)}
       >
         {icon && <span className="text-slate-400">{icon}</span>}
-        <span className={`max-w-48 flex-1 truncate text-left ${selected ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}>
-          {selected?.[1] || placeholder}
+        <span className={`max-w-48 flex-1 truncate text-left ${selectedValues.length ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}>
+          {label}
         </span>
         <ChevronDown size={16} className={`text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -77,11 +104,11 @@ export default function Dropdown({
           )}
 
           <div className="max-h-72 overflow-auto p-1.5">
-            <Option active={!value} label={placeholder} onClick={() => choose('')} />
+            <Option active={!selectedValues.length} label={placeholder} onClick={clear} />
             {filtered.map(([optionValue, label]) => (
               <Option
                 key={optionValue}
-                active={value === optionValue}
+                active={selectedValueSet.has(optionValue)}
                 label={label}
                 onClick={() => choose(optionValue)}
               />
@@ -92,6 +119,12 @@ export default function Dropdown({
       )}
     </div>
   );
+}
+
+function formatMultipleLabel(selectedOptions, placeholder) {
+  if (!selectedOptions.length) return placeholder;
+  if (selectedOptions.length === 1) return selectedOptions[0][1];
+  return `${selectedOptions[0][1]} +${selectedOptions.length - 1}`;
 }
 
 function Option({ active, label, onClick }) {

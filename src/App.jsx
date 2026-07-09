@@ -32,15 +32,15 @@ export default function App() {
     period: '',
     startDate: '',
     endDate: '',
-    project: '',
-    employee: '',
-    department: '',
+    project: [],
+    employee: [],
+    department: [],
     projectStatus: '',
-    taskStatus: '',
+    taskStatus: [],
     query: '',
-    itsmType: '',
-    itsmInitiator: '',
-    itsmAssignee: ''
+    itsmType: [],
+    itsmInitiator: [],
+    itsmAssignee: []
   });
 
   useEffect(() => {

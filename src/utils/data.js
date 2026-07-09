@@ -65,18 +65,26 @@ export function emptyData() {
 }
 
 export function applyFilters(data, filters) {
-  const query = filters.query.toLowerCase();
+  const query = (filters.query || '').toLowerCase();
   const range = resolveDateRange(filters);
+  const projectFilter = selectedSet(filters.project);
+  const employeeFilter = selectedSet(filters.employee);
+  const departmentFilter = selectedSet(filters.department);
+  const projectStatusFilter = selectedSet(filters.projectStatus);
+  const taskStatusFilter = selectedSet(filters.taskStatus);
+  const itsmTypeFilter = selectedSet(filters.itsmType, true);
+  const itsmInitiatorFilter = selectedSet(filters.itsmInitiator, true);
+  const itsmAssigneeFilter = selectedSet(filters.itsmAssignee, true);
   const departmentEmployeeIds = new Set(
     data.users
-      .filter((user) => !filters.department || user.department === filters.department)
+      .filter((user) => matchesSelection(departmentFilter, user.department))
       .map((user) => user.id)
   );
   const tasks = data.tasks.filter((task) => {
-    return (!filters.project || task.projectId === filters.project)
-      && (!filters.employee || task.responsibleId === filters.employee)
-      && (!filters.department || departmentEmployeeIds.has(task.responsibleId))
-      && (!filters.taskStatus || task.status === filters.taskStatus)
+    return matchesSelection(projectFilter, task.projectId)
+      && matchesSelection(employeeFilter, task.responsibleId)
+      && (!departmentFilter.size || departmentEmployeeIds.has(task.responsibleId))
+      && matchesSelection(taskStatusFilter, task.status)
       && matchesTaskRange(task, range)
       && (!query || JSON.stringify(task).toLowerCase().includes(query));
   });
@@ -93,30 +101,41 @@ export function applyFilters(data, filters) {
       || JSON.stringify(project).toLowerCase().includes(query)
       || projectIds.has(project.id)
       || financeProjectNames.has(project.name);
-    return (!filters.project || project.id === filters.project)
-      && (!filters.projectStatus || project.status === filters.projectStatus)
+    return matchesSelection(projectFilter, project.id)
+      && matchesSelection(projectStatusFilter, project.status)
       && matchesProjectRange(project, range)
       && matchesQuery;
   });
   const users = data.users.filter((user) => {
-    return (!filters.employee || user.id === filters.employee)
-      && (!filters.department || user.department === filters.department)
-      && (!filters.project || employeeIds.has(user.id))
+    return matchesSelection(employeeFilter, user.id)
+      && matchesSelection(departmentFilter, user.department)
+      && (!projectFilter.size || employeeIds.has(user.id))
       && (!query || JSON.stringify(user).toLowerCase().includes(query) || employeeIds.has(user.id));
   });
   const assignments = data.assignments.filter((row) => {
-    return (!filters.project || row.projectId === filters.project)
-      && (!filters.employee || row.employeeId === filters.employee)
-      && (!filters.department || row.department === filters.department);
+    return matchesSelection(projectFilter, row.projectId)
+      && matchesSelection(employeeFilter, row.employeeId)
+      && matchesSelection(departmentFilter, row.department);
   });
   const itsmRequests = (data.itsmRequests || []).filter((request) => {
     return matchesItsmRange(request, range)
-      && (!filters.itsmType || String(request.requestType) === String(filters.itsmType))
-      && (!filters.itsmInitiator || String(request.initiator) === String(filters.itsmInitiator))
-      && (!filters.itsmAssignee || String(request.assignee) === String(filters.itsmAssignee));
+      && matchesSelection(itsmTypeFilter, request.requestType, true)
+      && matchesSelection(itsmInitiatorFilter, request.initiator, true)
+      && matchesSelection(itsmAssigneeFilter, request.assignee, true);
   });
 
   return recalc({ ...data, tasks, projects, users, assignments, financeRecords, itsmRequests });
+}
+
+function selectedSet(value, stringify = false) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return new Set(values.filter(Boolean).map((item) => stringify ? String(item) : item));
+}
+
+function matchesSelection(selection, value, stringify = false) {
+  if (!selection.size) return true;
+  const normalizedValue = stringify ? String(value) : value;
+  return selection.has(normalizedValue);
 }
 
 function resolveDateRange(filters) {

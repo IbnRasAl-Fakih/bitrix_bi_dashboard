@@ -40,15 +40,15 @@ const initialFilters = {
   period: '',
   startDate: '',
   endDate: '',
-  project: '',
-  employee: '',
-  department: '',
+  project: [],
+  employee: [],
+  department: [],
   projectStatus: '',
-  taskStatus: '',
+  taskStatus: [],
   query: '',
-  itsmType: '',
-  itsmInitiator: '',
-  itsmAssignee: ''
+  itsmType: [],
+  itsmInitiator: [],
+  itsmAssignee: []
 };
 
 export function Sidebar({ collapsed, setCollapsed, syncNow, syncing, status, theme, setTheme }) {
@@ -168,16 +168,16 @@ export function Topbar({ filters, setFilters, data }) {
         />
         {isItsm ? (
           <>
-            <Select value={filters.itsmType} onChange={(itsmType) => setFilter({ itsmType })} placeholder={'\u0422\u0438\u043f \u0437\u0430\u044f\u0432\u043a\u0438'} options={itsmTypes} />
-            <Select value={filters.itsmInitiator} onChange={(itsmInitiator) => setFilter({ itsmInitiator })} placeholder={'\u0418\u043d\u0438\u0446\u0438\u0430\u0442\u043e\u0440'} options={itsmInitiators} />
-            <Select value={filters.itsmAssignee} onChange={(itsmAssignee) => setFilter({ itsmAssignee })} placeholder={'\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c'} options={itsmAssignees} />
+            <Select multiple value={filters.itsmType} onChange={(itsmType) => setFilter({ itsmType })} placeholder={'\u0422\u0438\u043f \u0437\u0430\u044f\u0432\u043a\u0438'} options={itsmTypes} />
+            <Select multiple value={filters.itsmInitiator} onChange={(itsmInitiator) => setFilter({ itsmInitiator })} placeholder={'\u0418\u043d\u0438\u0446\u0438\u0430\u0442\u043e\u0440'} options={itsmInitiators} />
+            <Select multiple value={filters.itsmAssignee} onChange={(itsmAssignee) => setFilter({ itsmAssignee })} placeholder={'\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c'} options={itsmAssignees} />
           </>
         ) : (
           <>
-            <Select value={filters.project} onChange={(project) => setFilter({ project })} placeholder="Все проекты" options={data.projects.map((project) => [project.id, project.name])} />
-            <Select value={filters.employee} onChange={(employee) => setFilter({ employee })} placeholder="Все сотрудники" options={data.users.map((user) => [user.id, user.name])} />
-            <Select value={filters.department} onChange={(department) => setFilter({ department })} placeholder="Все отделы" options={departments.map((department) => [department, department])} />
-            <Select value={filters.taskStatus} onChange={(taskStatus) => setFilter({ taskStatus })} placeholder="Статус задачи" options={[['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Выполненные']]} />
+            <Select multiple value={filters.project} onChange={(project) => setFilter({ project })} placeholder="Все проекты" options={data.projects.map((project) => [project.id, project.name])} />
+            <Select multiple value={filters.employee} onChange={(employee) => setFilter({ employee })} placeholder="Все сотрудники" options={data.users.map((user) => [user.id, user.name])} />
+            <Select multiple value={filters.department} onChange={(department) => setFilter({ department })} placeholder="Все отделы" options={departments.map((department) => [department, department])} />
+            <Select multiple value={filters.taskStatus} onChange={(taskStatus) => setFilter({ taskStatus })} placeholder="Статус задачи" options={[['open', 'Открытые'], ['progress', 'В работе'], ['closed', 'Выполненные']]} />
             <SearchField value={filters.query} onChange={(query) => setFilter({ query })} />
           </>
         )}

@@ -11,7 +11,7 @@ const presets = [
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-export function Select({ value, onChange, options, placeholder = 'Все', icon, className = '', searchable = true }) {
+export function Select({ value, onChange, options, placeholder = 'Все', icon, className = '', searchable = true, multiple = false }) {
   return (
     <Dropdown
       value={value}
@@ -21,6 +21,7 @@ export function Select({ value, onChange, options, placeholder = 'Все', icon,
       icon={icon}
       className={className}
       searchable={searchable}
+      multiple={multiple}
     />
   );
 }
