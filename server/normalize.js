@@ -4,6 +4,19 @@ function n(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function taskTimeSeconds(task, rawElapsedTime = null) {
+  const elapsedTime = rawElapsedTime || task.elapsedTime || task.ELAPSED_TIME;
+  if (elapsedTime && typeof elapsedTime === 'object') {
+    const seconds = n(elapsedTime.seconds ?? elapsedTime.SECONDS);
+    if (seconds > 0) return seconds;
+
+    const minutes = n(elapsedTime.minutes ?? elapsedTime.MINUTES);
+    if (minutes > 0) return minutes * 60;
+  }
+
+  return n(task.TIME_SPENT_IN_LOGS ?? task.timeSpentInLogs ?? task.timeSpent);
+}
+
 const NO_PROJECT_ID = '__no_project__';
 
 function text(...values) {
@@ -276,6 +289,7 @@ function emptyAnalytics(warnings = []) {
 
 export function normalizeBitrixData(raw, settings) {
   const warnings = [...(raw.errors || [])];
+  const elapsedTimeByTaskId = new Map(Object.entries(raw.taskElapsedTimes || {}).map(([id, value]) => [String(id), value]));
   const financeSettings = settings.financeMapping || {};
   const departmentById = buildDepartmentMap(raw.departments || []);
 
@@ -301,7 +315,8 @@ export function normalizeBitrixData(raw, settings) {
   const taskRows = (raw.tasks || []).map((task, index) => {
     const status = taskStatus(task);
     const plannedSeconds = n(task.TIME_ESTIMATE ?? task.timeEstimate);
-    const actualSeconds = n(task.TIME_SPENT_IN_LOGS ?? task.timeSpentInLogs ?? task.timeSpent);
+    const taskId = String(task.ID ?? task.id ?? index + 1);
+    const actualSeconds = taskTimeSeconds(task, elapsedTimeByTaskId.get(taskId));
     const deadline = dateOrNull(task.DEADLINE ?? task.deadline);
     const rawProjectId = String(task.GROUP_ID ?? task.groupId ?? '');
     const projectId = rawProjectId && rawProjectId !== '0' ? rawProjectId : NO_PROJECT_ID;
@@ -310,7 +325,7 @@ export function normalizeBitrixData(raw, settings) {
       .map(([key, value]) => [key, tableCellValue(value)]));
     return {
       ...customFields,
-      id: String(task.ID ?? task.id ?? index + 1),
+      id: taskId,
       title: task.TITLE || task.title || `Задача ${task.ID ?? task.id ?? index + 1}`,
       projectId,
       parentId: String(task.PARENT_ID ?? task.parentId ?? ''),

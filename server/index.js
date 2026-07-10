@@ -128,7 +128,14 @@ async function bitrixWebhookFetch(method, params = {}, apiV3 = false) {
     body: JSON.stringify(params)
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.error) throw new Error(payload.error_description || payload.error || `HTTP ${response.status}`);
+  if (!response.ok || payload.error) {
+    const message = payload.error_description
+      || payload.error?.message
+      || payload.error?.code
+      || payload.error
+      || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
   return payload.result;
 }
 
@@ -192,7 +199,12 @@ function mergeTaskSources(primaryTasks = [], taggedTasks = []) {
   taggedTasks.forEach((task) => {
     const id = String(task.ID ?? task.id ?? '');
     if (!id) return;
-    byId.set(id, { ...(byId.get(id) || {}), ...task });
+    const current = byId.get(id) || {};
+    const supplemental = Object.fromEntries(Object.entries(task).filter(([key]) => {
+      const value = current[key];
+      return value === undefined || value === null || value === '';
+    }));
+    byId.set(id, { ...task, ...supplemental, ...current });
   });
   return [...byId.values()];
 }
@@ -305,39 +317,45 @@ async function syncFromBitrix() {
 
     if (me.status === 'rejected') throw me.reason;
 
-    const errors = [users, tasks, webhookTasks, workgroups, deals, financeSmart, departments]
+    const criticalErrors = [users, tasks, workgroups]
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason.message);
+    const warnings = [webhookTasks, deals, financeSmart, departments]
       .filter((result) => result.status === 'rejected')
       .map((result) => result.reason.message);
 
     if (financeSmart.status === 'fulfilled') {
-      errors.push(...financeSmart.value.warnings);
+      warnings.push(...financeSmart.value.warnings);
     }
     if (webhookTasks.status === 'fulfilled') {
-      errors.push(...webhookTasks.value.warnings);
+      warnings.push(...webhookTasks.value.warnings);
     }
+    const mergedTasks = mergeTaskSources(
+      tasks.status === 'fulfilled' ? tasks.value.data || [] : [],
+      webhookTasks.status === 'fulfilled' ? webhookTasks.value.items || [] : []
+    );
+
     const raw = {
       me: me.value.data,
       users: users.status === 'fulfilled' ? users.value.data || [] : [],
-      tasks: mergeTaskSources(
-        tasks.status === 'fulfilled' ? tasks.value.data || [] : [],
-        webhookTasks.status === 'fulfilled' ? webhookTasks.value.items || [] : []
-      ),
+      tasks: mergedTasks,
       workgroups: workgroups.status === 'fulfilled' ? workgroups.value.data || [] : [],
       deals: deals.status === 'fulfilled' ? deals.value.data || [] : [],
       financeItems: financeSmart.status === 'fulfilled' ? financeSmart.value.items || [] : [],
       financeEntityTypeId: financeSmart.status === 'fulfilled' ? financeSmart.value.entityTypeId : null,
       departments: departments.status === 'fulfilled' ? departments.value || [] : [],
-      errors
+      errors: [...criticalErrors, ...warnings]
     };
 
     raw.taskRelations = await fetchTaskRelations(raw.tasks, raw.workgroups);
     const data = normalizeBitrixData(raw, state.settings);
     state.data = data;
     state.lastSyncAt = new Date().toISOString();
-    state.syncStatus = errors.length ? 'partial' : 'success';
+    state.syncStatus = criticalErrors.length ? 'partial' : 'success';
     state.source = 'bitrix';
 
-    if (errors.length) logSync('warn', 'Часть сущностей Bitrix24 недоступна. Данные по ним не отображаются.', errors);
+    if (criticalErrors.length) logSync('warn', 'Часть основных сущностей Bitrix24 недоступна. Данные по ним не отображаются.', criticalErrors);
+    if (warnings.length) logSync('warn', 'Часть дополнительных источников Bitrix24 недоступна или пуста.', warnings);
     if (!data.meta.realRecords) logSync('warn', 'Синхронизация прошла, но доступных данных не найдено');
     logSync('success', 'Синхронизация завершена', { records: data.meta.realRecords });
     return data;

@@ -11,6 +11,7 @@ export default function Occupancy({ data, filters, setFilters }) {
   const isDays = unit === 'days';
   const unitLabel = isDays ? 'днях' : 'часах';
   const unitSuffix = isDays ? 'дн.' : 'ч';
+  const factLabel = isDays ? 'Факт, дн.' : 'Факт, ч';
 
   const view = useMemo(() => {
     if (!isDays) return {
@@ -52,6 +53,9 @@ export default function Occupancy({ data, filters, setFilters }) {
     };
   }, [data, isDays]);
   const trendMetricName = view.hoursTrend.find((row) => row.metricName)?.metricName;
+  const chartMetricName = view.hoursByEmployee.find((row) => row.metricName)?.metricName;
+  const chartValueName = chartMetricName || factLabel;
+  const chartUnitSuffix = chartMetricName ? chartMetricName.toLowerCase() : unitSuffix;
 
   return (
     <>
@@ -74,20 +78,20 @@ export default function Occupancy({ data, filters, setFilters }) {
         </div>
       </div>
       <section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartCard title={`Занятость по сотрудникам в ${unitLabel}`} empty={!view.hoursByEmployee.length} emptyText="В задачах нет заполненного времени по сотрудникам.">
-          <EmployeeBars data={view.hoursByEmployee} onClick={(row) => setFilters({ ...filters, employee: data.users.find((user) => user.name === row.name)?.id || '' })} />
+        <ChartCard title={`Фактические трудозатраты по сотрудникам, ${chartUnitSuffix}`} empty={!view.hoursByEmployee.length} emptyText="В задачах нет заполненного времени по сотрудникам.">
+          <EmployeeBars data={view.hoursByEmployee} valueName={chartValueName} onClick={(row) => setFilters({ ...filters, employee: data.users.find((user) => user.name === row.name)?.id || '' })} />
         </ChartCard>
-        <ChartCard title={`Занятость по отделам в ${unitLabel}`} empty={!view.hoursByDepartment.length}>
-          <EmployeeBars data={view.hoursByDepartment} onClick={(row) => setFilters({ ...filters, department: row.name })} />
+        <ChartCard title={`Фактические трудозатраты по отделам, ${chartUnitSuffix}`} empty={!view.hoursByDepartment.length}>
+          <EmployeeBars data={view.hoursByDepartment} valueName={chartValueName} onClick={(row) => setFilters({ ...filters, department: row.name })} />
         </ChartCard>
-        <ChartCard title={`Распределение занятости по проектам в ${unitLabel}`} empty={!view.stackedHours.length}>
+        <ChartCard title={`Факт по проектам в разрезе сотрудников, ${chartUnitSuffix}`} empty={!view.stackedHours.length}>
           <Stacked data={view.stackedHours} keys={data.users.map((user) => user.name)} />
         </ChartCard>
-        <ChartCard title={`Доля занятости по проектам в ${unitLabel}`} empty={!view.occupancyShare.length}>
-          <Donut data={view.occupancyShare} />
+        <ChartCard title={`Доля фактических трудозатрат по проектам, ${chartUnitSuffix}`} empty={!view.occupancyShare.length}>
+          <Donut data={view.occupancyShare} valueName={chartValueName} />
         </ChartCard>
-        <ChartCard title={`Динамика отработанного времени в ${unitLabel}`} empty={!view.hoursTrend.length}>
-          <LinePanel data={view.hoursTrend} first="hours" firstName={trendMetricName || (isDays ? 'Дни' : 'Часы')} />
+        <ChartCard title={`Динамика фактических трудозатрат, ${chartUnitSuffix}`} empty={!view.hoursTrend.length}>
+          <LinePanel data={view.hoursTrend} first="hours" firstName={trendMetricName || chartValueName} />
         </ChartCard>
       </section>
       <Matrix rows={view.assignments} unit={unit} />

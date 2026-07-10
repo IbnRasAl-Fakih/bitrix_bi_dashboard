@@ -75,8 +75,8 @@ function ChartTooltip({ active, payload, label, formatter = shortNumber }) {
   );
 }
 
-export function EmployeeBars({ data, onClick, showLegend = true }) {
-  const metricName = data.find((row) => row.metricName)?.metricName || 'Факт';
+export function EmployeeBars({ data, onClick, showLegend = true, valueName }) {
+  const metricName = valueName || data.find((row) => row.metricName)?.metricName || 'Факт';
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 18, left: 4, bottom: 30 }} onClick={(event) => event?.activePayload?.[0] && onClick?.(event.activePayload[0].payload)}>
@@ -125,13 +125,14 @@ export function LinePanel({ data, first, second, third, showLegend = true, first
   );
 }
 
-export function Donut({ data, showLegend = true }) {
+export function Donut({ data, showLegend = true, valueName }) {
+  const namedData = valueName ? data.map((row) => ({ ...row, metricName: valueName })) : data;
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
         <Tooltip content={<ChartTooltip />} />
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="72%" paddingAngle={3}>
-          {data.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}
+        <Pie data={namedData} dataKey="value" nameKey="name" innerRadius="50%" outerRadius="72%" paddingAngle={3}>
+          {namedData.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}
         </Pie>
         {showLegend && <Legend wrapperStyle={legendStyle} />}
       </PieChart>
@@ -154,7 +155,7 @@ export function Stacked({ data, keys, showLegend = true }) {
   );
 }
 
-export function BarSimple({ data, showLegend = false }) {
+export function BarSimple({ data, showLegend = false, valueName = 'Значение' }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 18, left: 10, bottom: 42 }}>
@@ -163,7 +164,7 @@ export function BarSimple({ data, showLegend = false }) {
         <YAxis tick={axisTick} tickFormatter={shortNumber} width={52} />
         <Tooltip cursor={tooltipCursor} content={<ChartTooltip />} />
         {showLegend && <Legend wrapperStyle={legendStyle} />}
-        <Bar dataKey="value" name="Значение" fill="#1d70f7" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="value" name={valueName} fill="#1d70f7" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
