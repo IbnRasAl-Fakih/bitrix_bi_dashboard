@@ -218,34 +218,130 @@ function dateIntervalsOverlap(startValue, endValue, range) {
 }
 
 export function recalc(data) {
+  const scoped = withTaskAggregates(data);
   return {
-    ...data,
-    charts: buildCharts(data),
+    ...scoped,
+    charts: buildCharts(scoped),
     kpis: {
-      ...data.kpis,
-      activeProjects: data.projects.filter((project) => project.status === 'active').length,
-      completedProjects: data.projects.filter((project) => project.status === 'completed').length,
-      employees: data.users.length,
-      tasks: data.tasks.length,
-      openTasks: data.tasks.filter((task) => task.status !== 'closed').length,
-      closedTasks: data.tasks.filter((task) => task.status === 'closed').length,
-      plannedHours: sum(data.tasks, 'plannedHours'),
-      actualHours: sum(data.tasks, 'actualHours'),
-      closedHours: sum(data.tasks, 'closedHours'),
-      income: sum(data.projects, 'income'),
-      expense: sum(data.projects, 'expense'),
-      profit: sum(data.projects, 'profit'),
-      overdueTasks: data.tasks.filter((task) => task.overdue).length,
-      completionRate: Math.round((data.tasks.filter((task) => task.status === 'closed').length / Math.max(data.tasks.length, 1)) * 100),
-      avgLoad: Math.round(avg(data.users.map((user) => user.load))),
-      teamLoad: Math.round(avg(data.users.map((user) => user.load)))
+      ...scoped.kpis,
+      activeProjects: scoped.projects.filter((project) => project.status === 'active').length,
+      completedProjects: scoped.projects.filter((project) => project.status === 'completed').length,
+      employees: scoped.users.length,
+      tasks: scoped.tasks.length,
+      openTasks: scoped.tasks.filter((task) => task.status !== 'closed').length,
+      closedTasks: scoped.tasks.filter((task) => task.status === 'closed').length,
+      plannedHours: sum(scoped.tasks, 'plannedHours'),
+      actualHours: sum(scoped.tasks, 'actualHours'),
+      closedHours: sum(scoped.tasks, 'closedHours'),
+      income: sum(scoped.projects, 'income'),
+      expense: sum(scoped.projects, 'expense'),
+      profit: sum(scoped.projects, 'profit'),
+      overdueTasks: scoped.tasks.filter((task) => task.overdue).length,
+      completionRate: Math.round((scoped.tasks.filter((task) => task.status === 'closed').length / Math.max(scoped.tasks.length, 1)) * 100),
+      avgLoad: Math.round(avg(scoped.users.map((user) => user.load))),
+      teamLoad: Math.round(avg(scoped.users.map((user) => user.load)))
     }
   };
 }
 
+function withTaskAggregates(data) {
+  const tasksByUser = new Map();
+  const tasksByProject = new Map();
+
+  data.tasks.forEach((task) => {
+    if (task.responsibleId) {
+      const rows = tasksByUser.get(task.responsibleId) || [];
+      rows.push(task);
+      tasksByUser.set(task.responsibleId, rows);
+    }
+    if (task.projectId) {
+      const rows = tasksByProject.get(task.projectId) || [];
+      rows.push(task);
+      tasksByProject.set(task.projectId, rows);
+    }
+  });
+
+  const users = data.users.map((user) => {
+    const userTasks = tasksByUser.get(user.id) || [];
+    const projectIds = [...new Set(userTasks.map((task) => task.projectId).filter(Boolean))];
+    const actualHours = sum(userTasks, 'actualHours');
+    const plannedHours = sum(userTasks, 'plannedHours');
+    const closedHours = sum(userTasks, 'closedHours');
+    const load = Math.round((actualHours / 160) * 100);
+    return {
+      ...user,
+      projects: projectIds.length,
+      tasks: userTasks.length,
+      closedTasks: userTasks.filter((task) => task.status === 'closed').length,
+      overdueTasks: userTasks.filter((task) => task.overdue).length,
+      plannedHours,
+      actualHours,
+      closedHours,
+      load
+    };
+  });
+
+  const projects = data.projects.map((project) => {
+    const projectTasks = tasksByProject.get(project.id) || [];
+    const actualHours = sum(projectTasks, 'actualHours');
+    const plannedHours = sum(projectTasks, 'plannedHours');
+    const closedHours = sum(projectTasks, 'closedHours');
+    const closedTasks = projectTasks.filter((task) => task.status === 'closed').length;
+    return {
+      ...project,
+      taskCount: projectTasks.length,
+      closedTasks,
+      openTasks: projectTasks.length - closedTasks,
+      overdueTasks: projectTasks.filter((task) => task.overdue).length,
+      plannedHours,
+      actualHours,
+      closedHours
+    };
+  });
+
+  return {
+    ...data,
+    users,
+    projects,
+    assignments: buildAssignments(users, projects, data.tasks)
+  };
+}
+
+function buildAssignments(users, projects, tasks) {
+  const rows = [];
+  users.forEach((user) => {
+    projects.forEach((project) => {
+      const filtered = tasks.filter((task) => task.responsibleId === user.id && task.projectId === project.id);
+      if (!filtered.length) return;
+      const actualHours = sum(filtered, 'actualHours');
+      const plannedHours = sum(filtered, 'plannedHours');
+      rows.push({
+        id: `${user.id}-${project.id}`,
+        employee: user.name,
+        employeeId: user.id,
+        department: user.department,
+        project: project.name,
+        projectId: project.id,
+        projectStatus: project.status,
+        plannedHours,
+        actualHours,
+        closedHours: sum(filtered, 'closedHours'),
+        deviation: Math.round((actualHours - plannedHours) * 10) / 10,
+        load: Math.round((actualHours / 160) * 100),
+        taskCount: filtered.length,
+        openTasks: filtered.filter((task) => task.status !== 'closed').length,
+        closedTasks: filtered.filter((task) => task.status === 'closed').length,
+        overdueTasks: filtered.filter((task) => task.overdue).length
+      });
+    });
+  });
+  return rows;
+}
+
 function buildCharts(data) {
   const financeRecords = data.financeRecords || [];
-  const hasTime = data.tasks.some((task) => task.actualHours > 0 || task.closedHours > 0);
+  // Keep occupancy charts time-based; task counts are shown on the tasks page.
+  const hasTime = true;
   return {
     ...data.charts,
     hoursByEmployee: hasTime
@@ -309,7 +405,7 @@ function buildHoursByDepartment(users, useTaskCount = false) {
       metricKind: useTaskCount ? 'tasks' : 'hours',
       metricName: useTaskCount ? 'Задач' : undefined
     }))
-    .filter((row) => row.hours || row.closed || row.employees)
+    .filter((row) => row.hours || row.closed || (useTaskCount && row.employees))
     .sort((a, b) => b.hours - a.hours);
 }
 
