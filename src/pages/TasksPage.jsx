@@ -52,7 +52,7 @@ export default function TasksPage({ data }) {
       </section>
       <DataTable title={`Задачи, ${unitSuffix}`} rows={tasks} columns={[
         ['title', 'Название'], ['project', 'Проект'], ['responsible', 'Ответственный'], ['creator', 'Постановщик'], ['status', 'Статус'],
-        ['deadline', 'Дедлайн'], ['createdAt', 'Создана'], ['closedAt', 'Выполнена'], ['plannedHours', `План, ${unitSuffix}`], ['actualHours', `Факт, ${unitSuffix}`], ['overdue', 'Просрочка'], ['url', 'Ссылка']
+        ['deadline', 'Дедлайн'], ['createdAt', 'Создана'], ['closedAt', 'Выполнена'], ['lastTimeLogAt', 'Дата факта'], ['plannedHours', `План, ${unitSuffix}`], ['actualHours', `Факт, ${unitSuffix}`], ['overdue', 'Просрочка'], ['url', 'Ссылка']
       ]} />
     </>
   );

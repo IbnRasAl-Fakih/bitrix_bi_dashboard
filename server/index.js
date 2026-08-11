@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { buildEmptyData, normalizeBitrixData } from './normalize.js';
 
@@ -14,9 +15,16 @@ const VIBE_API_BASE = process.env.VIBE_API_BASE || 'https://vibecode.bitrix24.te
 const VIBE_API_KEY = process.env.VIBE_API_KEY || '';
 const BITRIX_WEBHOOK_URL = String(process.env.BITRIX_WEBHOOK_URL || '').replace(/\/+$/, '');
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
+const INSTRUCTIONS_DIR = path.join(__dirname, '..', 'storage', 'instructions');
+const INSTRUCTIONS_INDEX = path.join(INSTRUCTIONS_DIR, 'index.json');
+const INSTRUCTION_MAX_BYTES = Number(process.env.INSTRUCTION_MAX_BYTES || 50 * 1024 * 1024);
+const ALLOWED_INSTRUCTION_TYPES = new Map([
+  ['application/pdf', '.pdf']
+]);
+const INSTRUCTION_TYPES_BY_EXT = new Map([...ALLOWED_INSTRUCTION_TYPES].map(([type, ext]) => [ext, type]));
 
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '70mb' }));
 
 const state = {
   data: buildEmptyData(),
@@ -174,6 +182,59 @@ async function fetchTaskRelations(tasks, workgroups) {
   } catch (error) {
     return { available: false, source: 'bitrix-webhook', relations: {}, error: sanitize(error.message) };
   }
+}
+
+async function fetchTaskElapsedTimes(tasks) {
+  if (!BITRIX_WEBHOOK_URL) return { available: false, source: 'unavailable', elapsedTimes: {}, warnings: ['BITRIX_WEBHOOK_URL is required for task time log dates'] };
+  const taskQueue = (tasks || [])
+    .filter((task) => Number(task.TIME_SPENT_IN_LOGS ?? task.timeSpentInLogs ?? task.timeSpent ?? 0) > 0)
+    .slice(0, 1000);
+  const entries = [];
+
+  for (let index = 0; index < taskQueue.length; index += 5) {
+    const chunk = taskQueue.slice(index, index + 5);
+    const chunkEntries = await Promise.allSettled(chunk.map(async (task) => {
+    const taskId = String(task.ID ?? task.id ?? '');
+    if (!taskId) return null;
+    const result = await bitrixWebhookFetch('task.elapseditem.getlist', [
+      Number(taskId),
+      { ID: 'ASC' },
+      {},
+      ['ID', 'TASK_ID', 'SECONDS', 'MINUTES', 'CREATED_DATE', 'USER_ID']
+    ]);
+    const items = Array.isArray(result) ? result : result?.items || result?.data || [];
+    const normalized = items.map((item) => ({
+      id: String(item.ID ?? item.id ?? ''),
+      taskId,
+      seconds: Number(item.SECONDS ?? item.seconds ?? 0) || (Number(item.MINUTES ?? item.minutes ?? 0) || 0) * 60,
+      createdAt: item.CREATED_DATE ?? item.createdDate ?? item.CREATED_DATE_FORMATTED ?? item.createdDateFormatted ?? item.CREATED_AT ?? item.createdAt ?? null,
+      userId: String(item.USER_ID ?? item.userId ?? '')
+    })).filter((item) => item.seconds > 0 || item.createdAt);
+    return [taskId, {
+      seconds: normalized.reduce((total, item) => total + item.seconds, 0),
+      dates: normalized.map((item) => item.createdAt).filter(Boolean),
+      items: normalized
+    }];
+    }));
+    entries.push(...chunkEntries);
+  }
+
+  const elapsedTimes = {};
+  const warnings = [];
+  entries.forEach((entry) => {
+    if (entry.status === 'fulfilled' && entry.value) {
+      const [taskId, value] = entry.value;
+      elapsedTimes[taskId] = value;
+    } else if (entry.status === 'rejected') {
+      warnings.push(sanitize(entry.reason?.message || entry.reason));
+    }
+  });
+  return {
+    available: warnings.length < entries.length,
+    source: 'bitrix-webhook',
+    elapsedTimes,
+    warnings: [...new Set(warnings)].slice(0, 5)
+  };
 }
 
 function relationIds(value, sourceTaskId) {
@@ -347,7 +408,13 @@ async function syncFromBitrix() {
       errors: [...criticalErrors, ...warnings]
     };
 
-    raw.taskRelations = await fetchTaskRelations(raw.tasks, raw.workgroups);
+    const [taskRelations, taskElapsedTimes] = await Promise.all([
+      fetchTaskRelations(raw.tasks, raw.workgroups),
+      fetchTaskElapsedTimes(raw.tasks)
+    ]);
+    raw.taskRelations = taskRelations;
+    raw.taskElapsedTimes = taskElapsedTimes.elapsedTimes;
+    if (taskElapsedTimes.warnings?.length) warnings.push(...taskElapsedTimes.warnings.map((message) => `Task time logs unavailable: ${message}`));
     const data = normalizeBitrixData(raw, state.settings);
     state.data = data;
     state.lastSyncAt = new Date().toISOString();
@@ -374,6 +441,58 @@ function ensureData() {
   const expired = !state.lastSyncAt || Date.now() - new Date(state.lastSyncAt).getTime() > CACHE_TTL_MS;
   if (!state.data || expired) return syncFromBitrix();
   return Promise.resolve(state.data);
+}
+
+async function ensureInstructionsStore() {
+  await fs.mkdir(INSTRUCTIONS_DIR, { recursive: true });
+  try {
+    await fs.access(INSTRUCTIONS_INDEX);
+  } catch {
+    await fs.writeFile(INSTRUCTIONS_INDEX, '[]', 'utf8');
+  }
+}
+
+async function readInstructions() {
+  await ensureInstructionsStore();
+  const text = await fs.readFile(INSTRUCTIONS_INDEX, 'utf8');
+  const rows = JSON.parse(text || '[]');
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function writeInstructions(rows) {
+  await ensureInstructionsStore();
+  await fs.writeFile(INSTRUCTIONS_INDEX, JSON.stringify(rows, null, 2), 'utf8');
+}
+
+function instructionFilename(name = 'instruction') {
+  return String(name)
+    .normalize('NFKD')
+    .replace(/[^\w.\- ]+/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .slice(0, 120) || 'instruction';
+}
+
+function contentDisposition(type, filename) {
+  const fallback = instructionFilename(filename).replace(/"/g, '');
+  const encoded = encodeURIComponent(filename).replace(/['()]/g, escape);
+  return `${type}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+async function sendInstructionFile(req, res, disposition) {
+  const rows = await readInstructions();
+  const item = rows.find((row) => row.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Файл не найден' });
+
+  const filePath = path.join(INSTRUCTIONS_DIR, item.storedName);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(INSTRUCTIONS_DIR))) {
+    return res.status(400).json({ error: 'Некорректный путь файла' });
+  }
+
+  res.setHeader('Content-Type', item.mimeType);
+  res.setHeader('Content-Disposition', contentDisposition(disposition, item.originalName));
+  res.sendFile(resolved);
 }
 
 app.get('/api/status', (req, res) => {
@@ -408,6 +527,84 @@ app.post('/api/settings', (req, res) => {
   state.data = null;
   logSync('info', 'Настройки обновлены. Запустите синхронизацию, чтобы применить маппинг.');
   res.json({ settings: state.settings });
+});
+
+app.get('/api/instructions', async (req, res) => {
+  try {
+    const rows = await readInstructions();
+    res.json({ files: rows.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) });
+  } catch (error) {
+    res.status(500).json({ error: 'Не удалось получить список файлов', message: sanitize(error.message) });
+  }
+});
+
+app.post('/api/instructions', async (req, res) => {
+  try {
+    const { name, mimeType, content } = req.body || {};
+    if (!name || !content) {
+      return res.status(400).json({ error: 'Передайте файл для загрузки' });
+    }
+    const sourceExt = path.extname(name).toLowerCase();
+    const resolvedMimeType = ALLOWED_INSTRUCTION_TYPES.has(mimeType) ? mimeType : INSTRUCTION_TYPES_BY_EXT.get(sourceExt);
+    if (!resolvedMimeType) {
+      return res.status(400).json({ error: 'Поддерживаются только PDF-файлы' });
+    }
+
+    const buffer = Buffer.from(String(content), 'base64');
+    if (!buffer.length || buffer.length > INSTRUCTION_MAX_BYTES) {
+      return res.status(400).json({ error: `Размер файла должен быть до ${Math.round(INSTRUCTION_MAX_BYTES / 1024 / 1024)} МБ` });
+    }
+
+    const expectedExt = ALLOWED_INSTRUCTION_TYPES.get(resolvedMimeType);
+    if (sourceExt !== expectedExt) {
+      return res.status(400).json({ error: `Расширение файла должно быть ${expectedExt}` });
+    }
+
+    const id = randomUUID();
+    const storedName = `${id}${expectedExt}`;
+    await ensureInstructionsStore();
+    await fs.writeFile(path.join(INSTRUCTIONS_DIR, storedName), buffer);
+
+    const rows = await readInstructions();
+    await Promise.all(rows.map((row) => fs.rm(path.join(INSTRUCTIONS_DIR, row.storedName), { force: true })));
+    const file = {
+      id,
+      originalName: path.basename(name),
+      storedName,
+      mimeType: resolvedMimeType,
+      size: buffer.length,
+      createdAt: new Date().toISOString()
+    };
+    await writeInstructions([file]);
+    res.status(201).json({ file });
+  } catch (error) {
+    res.status(500).json({ error: 'Не удалось загрузить файл', message: sanitize(error.message) });
+  }
+});
+
+app.get('/api/instructions/:id/view', (req, res) => {
+  sendInstructionFile(req, res, 'inline').catch((error) => {
+    res.status(500).json({ error: 'Не удалось открыть файл', message: sanitize(error.message) });
+  });
+});
+
+app.get('/api/instructions/:id/download', (req, res) => {
+  sendInstructionFile(req, res, 'attachment').catch((error) => {
+    res.status(500).json({ error: 'Не удалось скачать файл', message: sanitize(error.message) });
+  });
+});
+
+app.delete('/api/instructions/:id', async (req, res) => {
+  try {
+    const rows = await readInstructions();
+    const item = rows.find((row) => row.id === req.params.id);
+    if (!item) return res.status(404).json({ error: 'Файл не найден' });
+    await fs.rm(path.join(INSTRUCTIONS_DIR, item.storedName), { force: true });
+    await writeInstructions(rows.filter((row) => row.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Не удалось удалить файл', message: sanitize(error.message) });
+  }
 });
 
 app.get('/api/check-access', async (req, res) => {

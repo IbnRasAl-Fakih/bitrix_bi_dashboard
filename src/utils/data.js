@@ -172,14 +172,7 @@ function parseDateEnd(value) {
 
 function matchesTaskRange(task, range) {
   if (!range.start && !range.end) return true;
-  return [
-    task.createdAt,
-    task.closedAt,
-    task.activityAt,
-    task.startDatePlan,
-    task.endDatePlan,
-    task.deadline
-  ].some((value) => matchesPointDate(value, range));
+  return (task.timeLogDates || []).some((value) => matchesPointDate(value, range));
 }
 
 function matchesItsmRange(request, range) {

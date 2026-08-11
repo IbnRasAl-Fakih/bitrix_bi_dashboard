@@ -24,7 +24,7 @@ export function formatKpi(key, value) {
 export function formatCell(key, value) {
   if (value === null || value === undefined || value === '') return '-';
   if (['income', 'expense', 'profit'].includes(key)) return formatMoney(value);
-  if (key === 'createdAt' || ['createdTime', 'updatedTime', 'movedTime'].includes(key)) {
+  if (key === 'createdAt' || ['createdTime', 'updatedTime', 'movedTime', 'lastTimeLogAt'].includes(key)) {
     return new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
   }
   if (['deadline', 'closedAt', 'lastActivity', 'startDate', 'endDate', 'startDatePlan', 'endDatePlan', 'activityAt', 'registeredAt', 'completedAt'].includes(key)) {

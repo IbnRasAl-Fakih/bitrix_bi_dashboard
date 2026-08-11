@@ -25,7 +25,18 @@ function text(...values) {
 
 function dateOrNull(value) {
   if (!value) return null;
-  const date = new Date(value);
+  const raw = String(value).trim();
+  const european = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  const date = european
+    ? new Date(
+      Number(european[3]),
+      Number(european[2]) - 1,
+      Number(european[1]),
+      Number(european[4] || 0),
+      Number(european[5] || 0),
+      Number(european[6] || 0)
+    )
+    : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
@@ -316,7 +327,11 @@ export function normalizeBitrixData(raw, settings) {
     const status = taskStatus(task);
     const plannedSeconds = n(task.TIME_ESTIMATE ?? task.timeEstimate);
     const taskId = String(task.ID ?? task.id ?? index + 1);
-    const actualSeconds = taskTimeSeconds(task, elapsedTimeByTaskId.get(taskId));
+    const elapsedTime = elapsedTimeByTaskId.get(taskId);
+    const actualSeconds = taskTimeSeconds(task, elapsedTime);
+    const timeLogDates = (elapsedTime?.dates || [])
+      .map((value) => dateOrNull(value))
+      .filter(Boolean);
     const deadline = dateOrNull(task.DEADLINE ?? task.deadline);
     const rawProjectId = String(task.GROUP_ID ?? task.groupId ?? '');
     const projectId = rawProjectId && rawProjectId !== '0' ? rawProjectId : NO_PROJECT_ID;
@@ -338,6 +353,8 @@ export function normalizeBitrixData(raw, settings) {
       createdAt: dateOrNull(task.CREATED_DATE ?? task.createdDate),
       closedAt: dateOrNull(task.CLOSED_DATE ?? task.closedDate),
       activityAt: dateOrNull(task.ACTIVITY_DATE ?? task.activityDate ?? task.CHANGED_DATE ?? task.changedDate),
+      lastTimeLogAt: timeLogDates.slice().sort().at(-1) || null,
+      timeLogDates,
       startDatePlan: dateOrNull(task.START_DATE_PLAN ?? task.startDatePlan ?? task.DATE_START ?? task.dateStart),
       endDatePlan: dateOrNull(task.END_DATE_PLAN ?? task.endDatePlan),
       accompliceIds: stringIds(task.ACCOMPLICES ?? task.accomplices),
@@ -398,6 +415,10 @@ export function normalizeBitrixData(raw, settings) {
     source: raw.taskRelations?.source || 'unavailable',
     count: Object.values(raw.taskRelations?.relations || {}).reduce((total, ids) => total + ids.length, 0),
     error: raw.taskRelations?.error || null
+  };
+  data.meta.taskElapsedTimes = {
+    records: Object.values(raw.taskElapsedTimes || {}).reduce((total, item) => total + (item.items?.length || 0), 0),
+    tasksWithDates: taskRows.filter((task) => task.timeLogDates?.length).length
   };
   data.meta.availability = {
     users: users.length > 0,

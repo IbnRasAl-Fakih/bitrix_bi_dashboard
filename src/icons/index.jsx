@@ -14,6 +14,8 @@ export {
   Clock,
   Database,
   Download,
+  Eye,
+  FileText,
   Flag,
   FilterX,
   GitBranch,
@@ -29,6 +31,8 @@ export {
   SlidersHorizontal,
   Sun,
   Target,
+  Trash2,
+  Upload,
   Users,
   WalletCards,
   X

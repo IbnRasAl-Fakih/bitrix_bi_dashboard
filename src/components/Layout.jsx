@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Clock,
   Database,
+  FileText,
   FilterX,
   LayoutDashboard,
   Menu,
@@ -29,6 +30,7 @@ const nav = [
   ['/tasks', 'Задачи', CheckCircle2],
   ['/itsm', 'Заявки ITSM', ClipboardList],
   ['/employees', 'Сотрудники', Users],
+  ['/instructions', 'Инструкция', FileText],
   ['/strategy', 'Стратегия', Target],
   ['/settings', 'Настройки', Settings],
   ['/sync', 'Синхронизация', Database]

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar, Topbar } from './components/Layout.jsx';
 import Skeleton from './components/Skeleton.jsx';
 import DetailDrawer from './components/DetailDrawer.jsx';
@@ -13,6 +13,7 @@ import FinancePage from './pages/FinancePage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import ItsmPage from './pages/ItsmPage.jsx';
 import EmployeesPage from './pages/EmployeesPage.jsx';
+import InstructionsPage from './pages/InstructionsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import SyncPage from './pages/SyncPage.jsx';
 import ScrollToTop from './components/ScrollToTop.jsx';
@@ -21,6 +22,7 @@ import { RefreshCw } from './icons/index.jsx';
 import { applyFilters, emptyData } from './utils/data.js';
 
 export default function App() {
+  const location = useLocation();
   const [theme, setTheme] = useState('light');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [payload, setPayload] = useState(null);
@@ -78,6 +80,7 @@ export default function App() {
 
   const data = payload || emptyData();
   const filtered = useMemo(() => applyFilters(data, filters), [data, filters]);
+  const standalonePage = location.pathname === '/instructions';
 
   return (
     <div className={`grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 ${sidebarCollapsed ? 'lg:grid-cols-[88px_1fr]' : 'lg:grid-cols-[284px_1fr]'}`}>
@@ -98,12 +101,12 @@ export default function App() {
           setFilters={setFilters}
           data={data}
         />
-        {loading ? <Skeleton /> : status.status === 'error' ? (
+        {loading && !standalonePage ? <Skeleton /> : status.status === 'error' && !standalonePage ? (
           <ErrorState
             description={status.error || 'Не удалось получить данные из Bitrix24.'}
             onRetry={syncNow}
           />
-        ) : !data.meta?.realRecords ? (
+        ) : !data.meta?.realRecords && !standalonePage ? (
           <EmptyState
             title="Данных Bitrix24 не найдено"
             description="Синхронизация не вернула доступные проекты, задачи, сотрудников или сделки. Проверьте права API и выбранный период."
@@ -121,6 +124,7 @@ export default function App() {
             <Route path="/tasks" element={<TasksPage data={filtered} />} />
             <Route path="/itsm" element={<ItsmPage data={filtered} />} />
             <Route path="/employees" element={<EmployeesPage data={filtered} />} />
+            <Route path="/instructions" element={<InstructionsPage />} />
             <Route path="/settings" element={<SettingsPage status={status} syncNow={syncNow} data={data} />} />
             <Route path="/sync" element={<SyncPage status={status} syncNow={syncNow} syncing={syncing} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
