@@ -76,34 +76,7 @@ export default function InstructionsPage() {
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-4">
-      <section className="panel p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-xl font-bold">Инструкция</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Загрузка, просмотр и скачивание рабочей инструкции в PDF.
-            </p>
-          </div>
-          <label className={`btn btn-primary w-fit cursor-pointer ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
-            <Upload size={18} />
-            {uploading ? 'Загрузка...' : file ? 'Заменить файл' : 'Загрузить файл'}
-            <input
-              className="hidden"
-              type="file"
-              accept=".pdf,application/pdf"
-              onChange={uploadFile}
-              disabled={uploading}
-            />
-          </label>
-        </div>
-        {message && (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-            {message}
-          </div>
-        )}
-      </section>
-
+    <div className="grid min-h-[calc(100vh-2rem)] grid-rows-[minmax(0,1fr)_auto] gap-4">
       <section className="panel min-h-0 overflow-hidden">
         {loading ? (
           <div className="grid h-full min-h-[620px] place-items-center p-6 text-sm text-slate-500">
@@ -138,6 +111,33 @@ export default function InstructionsPage() {
               <FileText className="mx-auto mb-4 text-slate-400" size={48} />
               <p>Инструкция еще не загружена.</p>
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="panel p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-bold">Инструкция</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Загрузка, просмотр и скачивание рабочей инструкции в PDF.
+            </p>
+          </div>
+          <label className={`btn btn-primary w-fit cursor-pointer ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
+            <Upload size={18} />
+            {uploading ? 'Загрузка...' : file ? 'Заменить файл' : 'Загрузить файл'}
+            <input
+              className="hidden"
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={uploadFile}
+              disabled={uploading}
+            />
+          </label>
+        </div>
+        {message && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            {message}
           </div>
         )}
       </section>
