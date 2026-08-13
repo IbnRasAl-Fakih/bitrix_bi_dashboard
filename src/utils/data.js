@@ -80,7 +80,7 @@ export function applyFilters(data, filters) {
       .filter((user) => matchesSelection(departmentFilter, user.department))
       .map((user) => user.id)
   );
-  const tasks = data.tasks.filter((task) => {
+  const tasks = data.tasks.map((task) => scopeTaskTimeToRange(task, range)).filter((task) => {
     return matchesSelection(projectFilter, task.projectId)
       && matchesSelection(employeeFilter, task.responsibleId)
       && (!departmentFilter.size || departmentEmployeeIds.has(task.responsibleId))
@@ -139,14 +139,14 @@ function matchesSelection(selection, value, stringify = false) {
 }
 
 function resolveDateRange(filters) {
-  if (filters.period === 'custom') {
+  if (filters.period === 'custom' || filters.period === 'month') {
     return {
       start: parseDateStart(filters.startDate),
       end: parseDateEnd(filters.endDate)
     };
   }
 
-  const daysByPeriod = { '30d': 30, '90d': 90, '180d': 180, year: 365 };
+  const daysByPeriod = { '30d': 30, '90d': 90, year: 365 };
   const days = daysByPeriod[filters.period];
   if (!days) return { start: null, end: null };
 
@@ -173,6 +173,21 @@ function parseDateEnd(value) {
 function matchesTaskRange(task, range) {
   if (!range.start && !range.end) return true;
   return (task.timeLogDates || []).some((value) => matchesPointDate(value, range));
+}
+
+function scopeTaskTimeToRange(task, range) {
+  if (!range.start && !range.end) return task;
+  const scopedLogs = (task.timeLogs || []).filter((log) => matchesPointDate(log.createdAt, range));
+  const scopedSeconds = scopedLogs.reduce((total, log) => total + Number(log.seconds || 0), 0);
+  const actualHours = Math.round((scopedSeconds / 3600) * 10) / 10;
+  const timeLogDates = scopedLogs.map((log) => log.createdAt).filter(Boolean);
+  return {
+    ...task,
+    actualHours,
+    closedHours: task.status === 'closed' ? actualHours : 0,
+    timeLogDates,
+    lastTimeLogAt: timeLogDates.slice().sort().at(-1) || null
+  };
 }
 
 function matchesItsmRange(request, range) {

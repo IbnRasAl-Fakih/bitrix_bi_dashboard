@@ -5,7 +5,6 @@ import Dropdown from './Dropdown.jsx';
 const presets = [
   ['30d', '30 дней'],
   ['90d', '90 дней'],
-  ['180d', '180 дней'],
   ['year', 'Год']
 ];
 
@@ -37,13 +36,16 @@ export function SearchField({ value, onChange, placeholder = 'Поиск', class
 
 export function DateRangePicker({ period, startDate, endDate, onChange }) {
   const [open, setOpen] = useState(false);
+  const [monthMode, setMonthMode] = useState(false);
   const [cursor, setCursor] = useState(() => startDate ? monthStart(parseIsoDate(startDate)) : monthStart(new Date()));
   const ref = useRef(null);
   const selectedStart = parseIsoDate(startDate);
   const selectedEnd = parseIsoDate(endDate);
-  const label = period === 'custom'
-    ? formatRangeLabel(selectedStart, selectedEnd)
-    : presets.find(([value]) => value === period)?.[1] || 'Период';
+  const label = period === 'month'
+    ? formatMonthLabel(selectedStart)
+    : period === 'custom'
+      ? formatRangeLabel(selectedStart, selectedEnd)
+      : presets.find(([value]) => value === period)?.[1] || 'Период';
 
   useEffect(() => {
     function handleClick(event) {
@@ -62,14 +64,23 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (open && selectedStart) setCursor(monthStart(selectedStart));
+  }, [open, startDate]);
+
   const days = useMemo(() => buildMonthDays(cursor), [cursor]);
 
   function choosePreset(nextPeriod) {
+    setMonthMode(false);
     onChange({ period: nextPeriod, startDate: '', endDate: '' });
     setOpen(false);
   }
 
   function chooseDay(day) {
+    if (monthMode) {
+      return;
+    }
+
     const value = toInputDate(day);
     if (!selectedStart || selectedEnd) {
       onChange({ period: 'custom', startDate: value, endDate: '' });
@@ -79,6 +90,14 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
     const start = selectedStart <= day ? selectedStart : day;
     const end = selectedStart <= day ? day : selectedStart;
     onChange({ period: 'custom', startDate: toInputDate(start), endDate: toInputDate(end) });
+  }
+
+  function chooseVisibleMonth() {
+    const start = monthStart(cursor);
+    const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+    onChange({ period: 'month', startDate: toInputDate(start), endDate: toInputDate(end) });
+    setMonthMode(false);
+    setOpen(false);
   }
 
   return (
@@ -104,7 +123,7 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
                 key={value}
                 type="button"
                 className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition ${
-                  period === value
+                  period === value && !monthMode
                     ? 'bg-brand-500 text-white shadow-sm'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                 }`}
@@ -113,6 +132,17 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
                 {presetLabel}
               </button>
             ))}
+            <button
+              type="button"
+              className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition ${
+                monthMode || period === 'month'
+                  ? 'bg-brand-500 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+              onClick={chooseVisibleMonth}
+            >
+              Месяц
+            </button>
           </div>
 
           <div className="mb-3 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/70">
@@ -134,6 +164,7 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
               {days.map((day) => {
                 const active = isSameDay(day, selectedStart) || isSameDay(day, selectedEnd);
                 const inRange = selectedStart && selectedEnd && day >= selectedStart && day <= selectedEnd;
+                const inCursorMonth = day.getMonth() === cursor.getMonth();
                 return (
                   <button
                     key={day.toISOString()}
@@ -141,9 +172,11 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
                     className={`h-9 rounded-lg text-sm font-semibold transition ${
                       active
                         ? 'bg-brand-500 text-white shadow-sm'
-                        : inRange
+                        : monthMode && inCursorMonth
+                          ? 'bg-blue-100 text-brand-700 hover:bg-blue-200 dark:bg-blue-950 dark:text-blue-200'
+                          : inRange
                           ? 'bg-blue-100 text-brand-700 dark:bg-blue-950 dark:text-blue-200'
-                          : day.getMonth() === cursor.getMonth()
+                          : inCursorMonth
                             ? 'text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-900'
                             : 'text-slate-300 hover:bg-white dark:text-slate-600 dark:hover:bg-slate-900'
                     }`}
@@ -156,12 +189,15 @@ export function DateRangePicker({ period, startDate, endDate, onChange }) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span className="truncate">{formatRangeLabel(selectedStart, selectedEnd)}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="min-w-0 flex-1 truncate">{monthMode ? cursor.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) : period === 'month' ? formatMonthLabel(selectedStart) : formatRangeLabel(selectedStart, selectedEnd)}</span>
             <button
               type="button"
               className="rounded-lg px-2.5 py-1.5 font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
-              onClick={() => onChange({ period: 'custom', startDate: '', endDate: '' })}
+              onClick={() => {
+                setMonthMode(false);
+                onChange({ period: '', startDate: '', endDate: '' });
+              }}
             >
               Очистить
             </button>
@@ -215,4 +251,9 @@ function formatRangeLabel(start, end) {
   if (start && end) return `${format(start)} - ${format(end)}`;
   if (start) return `С ${format(start)}`;
   return 'Выберите период';
+}
+
+function formatMonthLabel(date) {
+  if (!date) return 'Месяц';
+  return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }

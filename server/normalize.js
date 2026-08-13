@@ -329,9 +329,15 @@ export function normalizeBitrixData(raw, settings) {
     const taskId = String(task.ID ?? task.id ?? index + 1);
     const elapsedTime = elapsedTimeByTaskId.get(taskId);
     const actualSeconds = taskTimeSeconds(task, elapsedTime);
-    const timeLogDates = (elapsedTime?.dates || [])
-      .map((value) => dateOrNull(value))
-      .filter(Boolean);
+    const timeLogs = (elapsedTime?.items || [])
+      .map((item) => ({
+        id: item.id || '',
+        userId: item.userId || '',
+        seconds: n(item.seconds),
+        createdAt: dateOrNull(item.createdAt)
+      }))
+      .filter((item) => item.createdAt);
+    const timeLogDates = timeLogs.map((item) => item.createdAt);
     const deadline = dateOrNull(task.DEADLINE ?? task.deadline);
     const rawProjectId = String(task.GROUP_ID ?? task.groupId ?? '');
     const projectId = rawProjectId && rawProjectId !== '0' ? rawProjectId : NO_PROJECT_ID;
@@ -355,6 +361,7 @@ export function normalizeBitrixData(raw, settings) {
       activityAt: dateOrNull(task.ACTIVITY_DATE ?? task.activityDate ?? task.CHANGED_DATE ?? task.changedDate),
       lastTimeLogAt: timeLogDates.slice().sort().at(-1) || null,
       timeLogDates,
+      timeLogs,
       startDatePlan: dateOrNull(task.START_DATE_PLAN ?? task.startDatePlan ?? task.DATE_START ?? task.dateStart),
       endDatePlan: dateOrNull(task.END_DATE_PLAN ?? task.endDatePlan),
       accompliceIds: stringIds(task.ACCOMPLICES ?? task.accomplices),
